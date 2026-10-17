@@ -1,0 +1,188 @@
+/* Browser chrome (hb-*) and hypereffect components (he-*). */
+
+.hb-toolbar {
+  padding: 6px 8px;
+  border-bottom: 1px solid @borders;
+}
+.hb-banner {
+  padding: 6px 12px;
+  background: alpha(@warning_color, 0.18);
+  border-bottom: 1px solid alpha(@warning_color, 0.4);
+}
+.hb-tab-close {
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+}
+.hb-welcome {
+  padding: 48px;
+}
+
+.he-root {
+  padding: 24px 28px 48px;
+}
+
+/* text */
+.he-v-h1 {
+  font-size: 2em;
+  font-weight: 800;
+}
+.he-v-h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+}
+.he-v-h3 {
+  font-size: 1.17em;
+  font-weight: 700;
+}
+.he-v-caption {
+  font-size: 0.88em;
+  opacity: 0.7;
+}
+.he-v-code {
+  font-family: monospace;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: alpha(@theme_fg_color, 0.06);
+}
+
+/* containers */
+.he-card {
+  padding: 14px 16px;
+  border: 1px solid @borders;
+  border-radius: 10px;
+  background: alpha(@theme_fg_color, 0.02);
+}
+.he-card-title {
+  font-weight: 700;
+}
+.he-list {
+  border: 1px solid @borders;
+  border-radius: 10px;
+}
+.he-list-items > * {
+  padding: 10px 12px;
+}
+.he-list-items > * + * {
+  border-top: 1px solid @borders;
+}
+.he-list-empty {
+  padding: 12px;
+  opacity: 0.6;
+}
+.he-tab {
+  padding-top: 4px;
+}
+.he-backdrop {
+  background: rgba(0, 0, 0, 0.38);
+}
+.he-dialog-card {
+  padding: 18px 20px;
+  margin: 24px;
+  border-radius: 12px;
+  background: @theme_base_color;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.he-dialog-title {
+  font-size: 1.15em;
+  font-weight: 700;
+}
+
+/* notice */
+.he-notice {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid alpha(@theme_selected_bg_color, 0.45);
+  background: alpha(@theme_selected_bg_color, 0.1);
+}
+.he-notice-title {
+  font-weight: 700;
+}
+.he-notice.he-v-success {
+  border-color: alpha(@success_color, 0.5);
+  background: alpha(@success_color, 0.1);
+}
+.he-notice.he-v-warning {
+  border-color: alpha(@warning_color, 0.6);
+  background: alpha(@warning_color, 0.12);
+}
+.he-notice.he-v-failure {
+  border-color: alpha(@error_color, 0.55);
+  background: alpha(@error_color, 0.1);
+}
+.he-notice.he-v-success image {
+  color: @success_color;
+}
+.he-notice.he-v-warning image {
+  color: @warning_color;
+}
+.he-notice.he-v-failure image {
+  color: @error_color;
+}
+
+/* badge */
+.he-badge {
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  border: 1px solid alpha(@theme_fg_color, 0.25);
+  background: alpha(@theme_fg_color, 0.05);
+}
+.he-badge.he-v-info {
+  color: @theme_selected_bg_color;
+  border-color: alpha(@theme_selected_bg_color, 0.6);
+  background: alpha(@theme_selected_bg_color, 0.1);
+}
+.he-badge.he-v-success {
+  color: @success_color;
+  border-color: alpha(@success_color, 0.6);
+  background: alpha(@success_color, 0.1);
+}
+.he-badge.he-v-warning {
+  color: @warning_color;
+  border-color: alpha(@warning_color, 0.6);
+  background: alpha(@warning_color, 0.12);
+}
+.he-badge.he-v-failure {
+  color: @error_color;
+  border-color: alpha(@error_color, 0.6);
+  background: alpha(@error_color, 0.1);
+}
+
+/* image */
+picture.he-v-thumbnail {
+  border-radius: 4px;
+}
+picture.he-v-avatar {
+  border-radius: 999px;
+}
+.he-image-alt {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* controls */
+.he-label {
+  font-weight: 600;
+  font-size: 0.92em;
+}
+.he-error {
+  color: @error_color;
+  font-size: 0.88em;
+}
+.he-multiline {
+  border: 1px solid @borders;
+  border-radius: 6px;
+}
+.he-multiline.error {
+  border-color: @error_color;
+}
+.he-slider-value {
+  font-family: monospace;
+  font-size: 0.88em;
+  opacity: 0.8;
+}
+button.he-success {
+  background: @success_color;
+  color: white;
+}

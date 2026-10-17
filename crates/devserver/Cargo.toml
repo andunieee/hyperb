@@ -1,0 +1,22 @@
+[package]
+name = "hyperb-devserver"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "hyperb-devserver"
+path = "src/main.rs"
+
+[dependencies]
+hyperb-core.workspace = true
+hypereffect.workspace = true
+demo-todos = { path = "../../../hypereffect/rust/demos/todos" }
+demo-psu = { path = "../../../hypereffect/rust/demos/psu" }
+demo-import = { path = "../../../hypereffect/rust/demos/import" }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+futures-util.workspace = true
+getrandom = "0.2"
+hex = "0.4"

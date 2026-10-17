@@ -1,0 +1,17 @@
+/target/
+**/target/
+**/*.rs.bk
+Cargo.lock
+android/.gradle/
+android/build/
+android/app/build/
+android/.cxx/
+android/.kotlin/
+# JNI libs are build artifacts copied from target/ by `just android-lib`
+android/app/src/main/jniLibs/
+android/local.properties
+*.apk
+*.aab
+.DS_Store
+.idea/
+*.iml

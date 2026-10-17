@@ -1,0 +1,17 @@
+[package]
+name = "hyperb-desktop"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hyperb-desktop"
+path = "src/main.rs"
+
+[dependencies]
+hyperb-core = { workspace = true, features = ["net"] }
+gtk4 = { version = "0.10", features = ["v4_12"] }
+gio = "0.21"
+glib = "0.21"
+base64 = "0.22"
+percent-encoding = "2"
+url = "2"

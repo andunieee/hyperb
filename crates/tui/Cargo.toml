@@ -1,0 +1,15 @@
+[package]
+name = "hyperb-tui"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hyperb-tui"
+path = "src/main.rs"
+
+[dependencies]
+hyperb-core = { workspace = true, features = ["net"] }
+ratatui = "0.30"
+textwrap = "0.16"
+unicode-width = "0.2"
+url = "2"
