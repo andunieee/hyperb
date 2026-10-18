@@ -85,7 +85,10 @@ mod tests {
 
     #[test]
     fn default_scheme_depends_on_host() {
-        assert_eq!(n("localhost:9001/todos"), "http://localhost:9001/todos");
+        assert_eq!(
+            n("localhost:9001/restaurant"),
+            "http://localhost:9001/restaurant"
+        );
         assert_eq!(n("127.0.0.1:9001"), "http://127.0.0.1:9001/");
         assert_eq!(n("192.168.1.20/psu"), "http://192.168.1.20/psu");
         assert_eq!(n("[::1]:8080"), "http://[::1]:8080/");

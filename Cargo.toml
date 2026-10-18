@@ -9,6 +9,6 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 hyperb-core = { path = "crates/core" }
-hypereffect = { path = "../hypereffect/rust/hypereffect" }
+hypereffect = "0.1"
 tokio = "1"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

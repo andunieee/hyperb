@@ -19,11 +19,11 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use url::Url;
 
-/// Local demo servers (`cargo run -p hyperb-devserver`), offered on new tabs.
+/// Local demo servers (`cargo run -p hyperb-demoserver`), offered on new tabs.
 const SUGGESTIONS: &[&str] = &[
-    "localhost:9001/todos",
-    "localhost:9001/psu",
-    "localhost:9001/import",
+    "localhost:9001/restaurant",
+    "localhost:9001/therapist",
+    "localhost:9001/textstats",
 ];
 
 pub struct Tab {
@@ -87,7 +87,7 @@ impl Tab {
             let url_entry = gtk::Entry::new();
             url_entry.set_hexpand(true);
             url_entry.set_placeholder_text(Some(
-                "Server address, e.g. https://example.com/app or localhost:9001/todos",
+                "Server address, e.g. https://example.com/app or localhost:9001/restaurant",
             ));
             url_entry.set_input_purpose(gtk::InputPurpose::Url);
             let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 6);

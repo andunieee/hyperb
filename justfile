@@ -39,16 +39,16 @@ desktop *args:
 tui *args:
     cargo run -p hyperb-tui -- {{args}}
 
-# Serve the hypereffect demo apps over HTTP + SSE (default 127.0.0.1:9001)
-devserver addr="127.0.0.1:9001":
-    cargo run -p hyperb-devserver -- {{addr}}
+# Serve the demo apps (restaurant, therapist, textstats) over HTTP + SSE (default 127.0.0.1:9001)
+demoserver addr="127.0.0.1:9001":
+    cargo run -p hyperb-demoserver -- {{addr}}
 
-# Run the devserver and the desktop app together
-dev:
+# Run the demoserver and the desktop app together
+demo:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo build -p hyperb-devserver -p hyperb-desktop
-    cargo run -q -p hyperb-devserver &
+    cargo build -p hyperb-demoserver -p hyperb-desktop
+    cargo run -q -p hyperb-demoserver &
     trap 'kill $!' EXIT
     cargo run -q -p hyperb-desktop
 
@@ -74,7 +74,7 @@ android: android-lib
 android-install: android-lib
     android/gradlew -p android installDebug
 
-# Let a connected device reach the devserver at localhost:9001
+# Let a connected device reach the demoserver at localhost:9001
 android-reverse:
     adb reverse tcp:9001 tcp:9001
 

@@ -753,27 +753,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5729f5117e208430e437df2f4843f5e5952997175992d1414f94c57d61e270b4"
 
 [[package]]
-name = "demo-import"
-version = "0.1.0"
-dependencies = [
- "hypereffect",
-]
-
-[[package]]
-name = "demo-psu"
-version = "0.1.0"
-dependencies = [
- "hypereffect",
-]
-
-[[package]]
-name = "demo-todos"
-version = "0.1.0"
-dependencies = [
- "hypereffect",
-]
-
-[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1682,6 +1661,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperb-demoserver"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "futures-util",
+ "getrandom 0.2.17",
+ "hex",
+ "hyperb-core",
+ "hypereffect",
+ "tokio",
+ "tower-http",
+]
+
+[[package]]
 name = "hyperb-desktop"
 version = "0.1.0"
 dependencies = [
@@ -1692,23 +1685,6 @@ dependencies = [
  "hyperb-core",
  "percent-encoding",
  "url",
-]
-
-[[package]]
-name = "hyperb-devserver"
-version = "0.1.0"
-dependencies = [
- "axum",
- "demo-import",
- "demo-psu",
- "demo-todos",
- "futures-util",
- "getrandom 0.2.17",
- "hex",
- "hyperb-core",
- "hypereffect",
- "tokio",
- "tower-http",
 ]
 
 [[package]]
@@ -1758,6 +1734,8 @@ dependencies = [
 [[package]]
 name = "hypereffect"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7781d98dbffb9ee93ceab784d0d7f9a1bf5d0dafc17eabc516a3b57c71f4c2ef"
 dependencies = [
  "cel",
  "serde",
@@ -3991,7 +3969,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

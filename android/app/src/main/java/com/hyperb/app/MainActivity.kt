@@ -49,8 +49,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.concurrent.thread
 
-/** Local demo servers (`just devserver`, reached through `adb reverse tcp:9001 tcp:9001`). */
-private val SUGGESTIONS = listOf("localhost:9001/todos", "localhost:9001/psu", "localhost:9001/import")
+/** Local demo servers (`just demoserver`, reached through `adb reverse tcp:9001 tcp:9001`). */
+private val SUGGESTIONS =
+    listOf("localhost:9001/restaurant", "localhost:9001/therapist", "localhost:9001/textstats")
 
 class MainActivity : ComponentActivity() {
     private val browser = Browser()

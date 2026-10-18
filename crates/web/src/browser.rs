@@ -24,11 +24,11 @@ use std::collections::HashMap;
 use url::Url;
 use wasm_bindgen::JsCast;
 
-/// Local demo servers (`just devserver`).
+/// Local demo servers (`just demoserver`).
 const SUGGESTIONS: &[&str] = &[
-    "localhost:9001/todos",
-    "localhost:9001/psu",
-    "localhost:9001/import",
+    "localhost:9001/restaurant",
+    "localhost:9001/therapist",
+    "localhost:9001/textstats",
 ];
 const IDENTITY_KEY: &str = "hyperb.identity";
 
@@ -358,7 +358,7 @@ pub fn Browser() -> impl IntoView {
                         inputmode="url"
                         autocomplete="off"
                         spellcheck="false"
-                        placeholder="Server address, e.g. https://example.com/app or localhost:9001/todos"
+                        placeholder="Server address, e.g. https://example.com/app or localhost:9001/restaurant"
                         aria-label="Server address"
                         prop:value=move || address.get()
                         on:input:target=move |ev| address.set(ev.target().value())

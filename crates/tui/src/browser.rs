@@ -24,12 +24,12 @@ use std::time::Instant;
 use unicode_width::UnicodeWidthStr;
 use url::Url;
 
-/// Local demo servers (`cargo run -p hyperb-devserver`), offered on the
+/// Local demo servers (`cargo run -p hyperb-demoserver`), offered on the
 /// welcome screen.
 const SUGGESTIONS: &[&str] = &[
-    "localhost:9001/todos",
-    "localhost:9001/psu",
-    "localhost:9001/import",
+    "localhost:9001/restaurant",
+    "localhost:9001/therapist",
+    "localhost:9001/textstats",
 ];
 
 pub struct Browser {
@@ -364,7 +364,7 @@ impl Browser {
         buf.set_style(field, fstyle);
         let mut cursor = None;
         if self.url.text().is_empty() {
-            let hint = "Server address, e.g. https://example.com/app or localhost:9001/todos";
+            let hint = "Server address, e.g. https://example.com/app or localhost:9001/restaurant";
             buf.set_stringn(
                 field.x + 1,
                 field.y,
