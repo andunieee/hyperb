@@ -1,0 +1,78 @@
+name: Deploy web renderer to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      # Pages serves this repo at https://<owner>.github.io/hyperb/
+      BASE_PATH: /hyperb
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/web
+          cache-all-crates: "true"
+
+      - name: Install cargo-leptos
+        run: cargo install cargo-leptos --locked
+
+      - name: Build web renderer (release)
+        working-directory: crates/web
+        run: cargo leptos build --release
+
+      # gh-pages is static hosting, so warm the SSR server once, capture the
+      # rendered shell as index.html (plus a 404.html), and deploy it together
+      # with the pkg/ assets. The asset URLs in the HTML are root-absolute
+      # ("/pkg/..."), so rewrite them to the Pages project URL base.
+      - name: Capture SSR shell into site
+        run: |
+          ./target/release/hyperb-web &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null' EXIT
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3000/ > target/site/index.html && break
+            sleep 1
+          done
+          test -s target/site/index.html
+          cp target/site/index.html target/site/404.html
+          touch target/site/.nojekyll
+          sed -i "s#\"/pkg/#\"${BASE_PATH}/pkg/#g" target/site/index.html target/site/404.html
+          rm -f target/site/pkg/*.d.ts
+
+      - name: List site contents
+        run: find target/site -type f
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
