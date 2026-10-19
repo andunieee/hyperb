@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn people_see_what_they_owe() {
-        let mut l = Loopback::<BillSplit>::new(Map::new());
+        let mut l = Loopback::<BillSplit>::new();
         assert_eq!(
             l.client.attr("left", "text"),
             Some(json!("Enter the total to start."))

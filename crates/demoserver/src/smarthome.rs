@@ -1006,7 +1006,7 @@ mod tests {
     use hypereffect::server::Loopback;
 
     fn new() -> Loopback<SmartHome> {
-        Loopback::new(Map::new())
+        Loopback::new()
     }
 
     fn ticks(l: &mut Loopback<SmartHome>, n: usize) {

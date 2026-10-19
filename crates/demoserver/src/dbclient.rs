@@ -1914,7 +1914,7 @@ mod tests {
 
     #[test]
     fn the_interface() {
-        let mut l = Loopback::<DbClient>::new(Map::new());
+        let mut l = Loopback::<DbClient>::new();
         assert_eq!(
             l.client.attr("col_0", "text"),
             Some(json!("id           INTEGER"))

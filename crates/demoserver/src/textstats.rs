@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn counts_words() {
-        let mut l = Loopback::<TextStats>::new(Map::new());
+        let mut l = Loopback::<TextStats>::new();
         l.write("form.text", json!("rose rose tulip fern"));
         assert!(l.trigger("analyze", "onPress"));
         assert_eq!(l.client.value("stats.words"), Some(&json!(4)));
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn empty_text_is_rejected() {
-        let mut l = Loopback::<TextStats>::new(Map::new());
+        let mut l = Loopback::<TextStats>::new();
         assert!(l.trigger("analyze", "onPress"));
         assert_eq!(
             l.client.attr("feedback", "text"),
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn non_latin_text() {
-        let mut l = Loopback::<TextStats>::new(Map::new());
+        let mut l = Loopback::<TextStats>::new();
         l.write("form.text", json!("∀∃! 희망, 희망!"));
         assert!(l.trigger("analyze", "onPress"));
         assert_eq!(l.client.value("stats.words"), Some(&json!(2)));

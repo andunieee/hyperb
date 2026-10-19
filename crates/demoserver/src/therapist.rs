@@ -241,7 +241,7 @@ mod tests {
             client: hypereffect::client::Client::new(),
             server: hypereffect::Server::new(),
         };
-        let hello = l.client.hello(Map::new());
+        let hello = l.client.hello();
         l.server.receive(crate::with_key(&hello, key).as_bytes());
         l.pump();
         (key, l)

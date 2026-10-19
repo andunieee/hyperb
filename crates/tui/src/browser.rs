@@ -11,7 +11,6 @@ use crate::page::{Action, Page, ACCENT, SPINNER};
 use crate::Msg;
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::{Client, ResolvedTree};
-use hyperb_core::hypereffect::Map;
 use hyperb_core::identity::Identity;
 use hyperb_core::net::{Connection, Event};
 use ratatui::buffer::Buffer;
@@ -171,7 +170,7 @@ impl Browser {
         }
         match ev {
             Event::Open => {
-                let hello = s.client.hello(Map::new());
+                let hello = s.client.hello();
                 if let Some(c) = &s.conn {
                     c.send(hello);
                 }

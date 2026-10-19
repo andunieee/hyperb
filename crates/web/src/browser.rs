@@ -136,7 +136,7 @@ impl Ctx {
             Event::Open => {
                 let hello = self
                     .client
-                    .try_update_value(|c| c.hello(Map::new()))
+                    .try_update_value(|c| c.hello())
                     .unwrap_or_default();
                 self.send(hello);
                 self.state.set(Some(State::Open));

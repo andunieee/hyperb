@@ -2046,7 +2046,7 @@ mod tests {
 
     fn session(lines: &[&str]) -> (Client, Vec<ResolvedTree>) {
         let mut c = Client::new();
-        c.hello(Map::new());
+        c.hello();
         for l in lines {
             c.receive_line(l);
         }

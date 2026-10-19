@@ -287,7 +287,7 @@ mod tests {
     use hypereffect::server::Loopback;
 
     fn new() -> Loopback<Pomodoro> {
-        Loopback::new(Map::new())
+        Loopback::new()
     }
 
     #[test]

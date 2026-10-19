@@ -772,7 +772,7 @@ mod tests {
     }
 
     fn new() -> Loopback<Finance> {
-        Loopback::new(Map::new())
+        Loopback::new()
     }
 
     #[test]

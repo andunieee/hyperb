@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn finds_and_fixes_problems() {
-        let mut l = Loopback::<Grammar>::new(Map::new());
+        let mut l = Loopback::<Grammar>::new();
         let found = l
             .client
             .value("stats.issues")
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn clean_and_empty_text() {
-        let mut l = Loopback::<Grammar>::new(Map::new());
+        let mut l = Loopback::<Grammar>::new();
         l.write("form.text", json!("This is a test."));
         assert!(l.trigger("text", "onChange"));
         assert_eq!(l.client.value("stats.issues"), Some(&json!(0)));
@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn dialects_differ() {
-        let mut l = Loopback::<Grammar>::new(Map::new());
+        let mut l = Loopback::<Grammar>::new();
         l.write("form.text", json!("I like the colour of the theatre."));
         l.write("form.dialect", json!("American"));
         assert!(l.trigger("dialect", "onChange"));

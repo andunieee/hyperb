@@ -12,7 +12,7 @@
 
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
-use hyperb_core::hypereffect::{json, serde_json, Map, Value};
+use hyperb_core::hypereffect::{json, serde_json, Value};
 use hyperb_core::identity::Identity;
 use hyperb_core::net::{Connection, Event};
 use jni::errors::ThrowRuntimeExAndDefault;
@@ -49,7 +49,7 @@ impl Session {
         let s = &mut *s;
         match ev {
             Event::Open => {
-                let hello = s.client.hello(Map::new());
+                let hello = s.client.hello();
                 if let Some(c) = &s.conn {
                     c.send(hello);
                 }

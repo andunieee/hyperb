@@ -943,7 +943,7 @@ mod tests {
     use hypereffect::server::Loopback;
 
     fn new() -> Loopback<Minecraft> {
-        Loopback::new(Map::new())
+        Loopback::new()
     }
 
     fn run_command(l: &mut Loopback<Minecraft>, cmd: &str) {

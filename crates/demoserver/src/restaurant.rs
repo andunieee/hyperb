@@ -248,7 +248,7 @@ mod tests {
             server: hypereffect::Server::new(),
         };
         // As the transport does: inject the key into the hello's signals.
-        let hello = l.client.hello(Map::new());
+        let hello = l.client.hello();
         l.server.receive(crate::with_key(&hello, key).as_bytes());
         l.pump();
         (key, l)

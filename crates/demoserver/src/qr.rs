@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn text_becomes_an_image() {
-        let mut l = Loopback::<Qr>::new(Map::new());
+        let mut l = Loopback::<Qr>::new();
         assert_eq!(l.client.attr("code", "visible"), Some(json!(false)));
         l.write("form.text", json!("https://example.com"));
         assert!(l.trigger("text", "onChange"));
@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn too_much_text_is_reported() {
-        let mut l = Loopback::<Qr>::new(Map::new());
+        let mut l = Loopback::<Qr>::new();
         l.write("form.text", json!("x".repeat(4000)));
         assert!(l.trigger("generate", "onPress"));
         assert_eq!(l.client.attr("feedback", "visible"), Some(json!(true)));

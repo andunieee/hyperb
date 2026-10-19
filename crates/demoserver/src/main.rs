@@ -376,7 +376,7 @@ mod testutil {
             client: hypereffect::client::Client::new(),
             server: Server::new(),
         };
-        let hello = l.client.hello(Default::default());
+        let hello = l.client.hello();
         l.server.receive(with_key(&hello, key).as_bytes());
         l.pump();
         l

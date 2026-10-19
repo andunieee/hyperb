@@ -14,7 +14,7 @@ use gtk::{gdk, glib, pango};
 use gtk4 as gtk;
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
-use hyperb_core::hypereffect::{json, Map, Value};
+use hyperb_core::hypereffect::{json, Value};
 use hyperb_core::identity::Identity;
 use hyperb_core::net::{Connection, Event};
 use std::cell::{Cell, RefCell};
@@ -271,7 +271,7 @@ impl Tab {
         let s = &mut *s;
         match ev {
             Event::Open => {
-                let hello = s.client.hello(Map::new());
+                let hello = s.client.hello();
                 if let Some(c) = &s.conn {
                     self.debug.log(Dir::Sent, &hello);
                     c.send(hello);

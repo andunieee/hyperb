@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn draws_all_kinds() {
-        let mut l = Loopback::<Chart>::new(Map::new());
+        let mut l = Loopback::<Chart>::new();
         // Drawn from the start.
         assert_eq!(l.client.attr("picture", "visible"), Some(json!(true)));
         assert_eq!(
