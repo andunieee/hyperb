@@ -186,3 +186,44 @@ button.he-success {
   background: @success_color;
   color: white;
 }
+
+/* sidebar tabs */
+notebook > header.left > tabs > tab {
+  padding: 6px 8px;
+}
+
+/* debugger */
+.hb-debug-head {
+  padding: 6px 10px;
+  border-bottom: 1px solid @borders;
+}
+.hb-debug .hb-msg {
+  padding: 3px 8px;
+  border-bottom: 1px solid alpha(@borders, 0.5);
+}
+.hb-debug .hb-element {
+  padding: 3px 8px;
+}
+.hb-debug .hb-element:hover {
+  background: alpha(@accent_bg_color, 0.2);
+}
+.hb-tag {
+  font-family: monospace;
+  font-weight: 700;
+}
+.hb-sent {
+  color: @accent_color;
+}
+.hb-recv {
+  color: @success_color;
+}
+.hb-json {
+  font-family: monospace;
+  font-size: 0.88em;
+  padding: 4px 0 6px 16px;
+}
+.hb-hl {
+  outline: 2px solid @accent_bg_color;
+  outline-offset: -2px;
+  background: alpha(@accent_bg_color, 0.18);
+}

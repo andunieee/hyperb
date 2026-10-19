@@ -6,6 +6,8 @@
 //! batch of frames. When the transport closes the last state stays on screen
 //! with controls disabled, and a banner offers to reconnect.
 
+use crate::clamp::Clamp;
+use crate::debug::{Debugger, Dir};
 use crate::render::Renderer;
 use gtk::prelude::*;
 use gtk::{gdk, glib, pango};
@@ -26,6 +28,9 @@ const SUGGESTIONS: &[&str] = &[
     "localhost:9001/textstats",
 ];
 
+/// The widest the rendered page gets; the rest of the window is margin.
+const CONTENT_WIDTH: i32 = 800;
+
 pub struct Tab {
     /// The notebook page.
     pub page: gtk::Box,
@@ -38,6 +43,7 @@ pub struct Tab {
     banner: gtk::Box,
     banner_text: gtk::Label,
     content: gtk::Stack,
+    debug: Debugger,
     session: RefCell<Session>,
     renderer: RefCell<Renderer>,
     quiet: Cell<bool>,
@@ -114,7 +120,7 @@ impl Tab {
             let scroll = gtk::ScrolledWindow::new();
             scroll.set_hscrollbar_policy(gtk::PolicyType::Never);
             scroll.set_vexpand(true);
-            scroll.set_child(Some(&main));
+            scroll.set_child(Some(&Clamp::new(CONTENT_WIDTH, &main)));
             let overlay = gtk::Overlay::new();
             overlay.set_child(Some(&scroll));
 
@@ -127,7 +133,20 @@ impl Tab {
             let page = gtk::Box::new(gtk::Orientation::Vertical, 0);
             page.append(&toolbar);
             page.append(&banner);
-            page.append(&content);
+            let debug = Debugger::new(weak.clone());
+            let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            body.append(&content);
+            body.append(&debug.widget);
+            // The debugger only takes space the page does not use.
+            let panel = debug.widget.clone();
+            body.add_tick_callback(move |body, _| {
+                let room = body.width() >= CONTENT_WIDTH + Debugger::WIDTH;
+                if panel.is_visible() != room {
+                    panel.set_visible(room);
+                }
+                glib::ControlFlow::Continue
+            });
+            page.append(&body);
 
             {
                 let w = weak.clone();
@@ -168,6 +187,7 @@ impl Tab {
                 banner,
                 banner_text,
                 content,
+                debug,
                 session: RefCell::new(Session {
                     client: Client::new(),
                     conn: None,
@@ -253,11 +273,17 @@ impl Tab {
             Event::Open => {
                 let hello = s.client.hello(Map::new());
                 if let Some(c) = &s.conn {
+                    self.debug.log(Dir::Sent, &hello);
                     c.send(hello);
                 }
                 s.state = State::Open;
             }
-            Event::Data(lines) => s.client.receive(lines.as_bytes()),
+            Event::Data(lines) => {
+                for l in lines.lines() {
+                    self.debug.log(Dir::Received, l);
+                }
+                s.client.receive(lines.as_bytes())
+            }
             Event::Closed(reason) => {
                 s.client.close();
                 s.conn = None;
@@ -285,6 +311,7 @@ impl Tab {
         };
         if let Some(line) = line {
             if let Some(c) = &self.session.borrow().conn {
+                self.debug.log(Dir::Sent, &line);
                 c.send(line);
             }
         }
@@ -327,6 +354,14 @@ impl Tab {
             self.renderer.borrow_mut().apply(&s.client, changes);
         }
         self.quiet.set(false);
+        self.debug.sync_elements(&self.session.borrow().client);
+    }
+
+    /// Outlines element `id` in the page, or clears the outline.
+    pub fn highlight(&self, id: Option<&str>) {
+        if let Ok(mut r) = self.renderer.try_borrow_mut() {
+            r.highlight(id);
+        }
     }
 
     fn update_chrome(&self) {

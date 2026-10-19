@@ -4,6 +4,8 @@
 //! hyperb-desktop [address...]    # each address opens in a tab
 //! ```
 
+mod clamp;
+mod debug;
 mod render;
 mod tab;
 
@@ -58,6 +60,7 @@ impl Browser {
     fn open(app: &gtk::Application, urls: &[String], identity: &Identity) {
         let notebook = gtk::Notebook::new();
         notebook.set_scrollable(true);
+        notebook.set_tab_pos(gtk::PositionType::Left);
         notebook.set_show_border(false);
         let new_tab = gtk::Button::from_icon_name("list-add-symbolic");
         new_tab.add_css_class("flat");
@@ -67,7 +70,7 @@ impl Browser {
         let window = gtk::ApplicationWindow::builder()
             .application(app)
             .title("hyperb")
-            .default_width(1000)
+            .default_width(1440)
             .default_height(760)
             .child(&notebook)
             .build();

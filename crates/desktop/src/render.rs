@@ -31,6 +31,7 @@ pub struct Renderer {
     overlay: gtk::Overlay,
     main: gtk::Box,
     widgets: HashMap<String, W>,
+    highlighted: Option<String>,
 }
 
 struct W {
@@ -139,6 +140,7 @@ impl Renderer {
             overlay,
             main,
             widgets: HashMap::new(),
+            highlighted: None,
         }
     }
 
@@ -171,6 +173,17 @@ impl Renderer {
         }
         for id in &resync {
             self.layout(client, id);
+        }
+    }
+
+    /// Outlines the widget of element `id`; `None` clears the outline.
+    pub fn highlight(&mut self, id: Option<&str>) {
+        if let Some(w) = self.highlighted.take().and_then(|old| self.widgets.get(&old)) {
+            w.outer.remove_css_class("hb-hl");
+        }
+        if let Some((id, w)) = id.and_then(|id| self.widgets.get(id).map(|w| (id, w))) {
+            w.outer.add_css_class("hb-hl");
+            self.highlighted = Some(id.to_string());
         }
     }
 
