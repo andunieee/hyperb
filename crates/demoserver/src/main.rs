@@ -8,7 +8,10 @@
 //! Paths: `/restaurant` (also `/`), `/therapist`, `/textstats`, `/pomodoro`
 //! (a tick-driven timer), `/qr`, `/chart` (images), `/billsplit`, `/finance`
 //! (an RPN financial calculator) and `/meet` (a Doodle-like scheduler whose
-//! meetings are shared between sessions and owned by keys). Each hello
+//! meetings are shared between sessions and owned by keys), `/grammar`
+//! (Harper), `/dbclient` (a SQL client over fake tables), `/minecraft` (a
+//! fake server's admin console), `/saas` (a fake product's admin panel, kept
+//! per key) and `/smarthome` (a simulated house). Each hello
 //! starts a session with its own app instance, which ends when its event
 //! stream closes (or if no stream is opened within [`STREAM_TIMEOUT`]).
 //!
@@ -20,12 +23,17 @@
 mod billsplit;
 mod chart;
 mod common;
+mod dbclient;
 mod finance;
+mod grammar;
 mod img;
 mod meet;
+mod minecraft;
 mod pomodoro;
 mod qr;
 mod restaurant;
+mod saas;
+mod smarthome;
 mod store;
 mod textstats;
 mod therapist;
@@ -57,6 +65,11 @@ const APPS: &[&str] = &[
     "billsplit",
     "finance",
     "meet",
+    "grammar",
+    "dbclient",
+    "minecraft",
+    "saas",
+    "smarthome",
 ];
 const STREAM_TIMEOUT: Duration = Duration::from_secs(30);
 /// The signal that carries the session key to the apps.
@@ -112,6 +125,7 @@ async fn main() {
             restaurant::GUESTS.prune();
             therapist::PATIENTS.prune();
             meet::prune();
+            saas::WORKSPACES.prune();
         }
     });
     axum::serve(listener, app).await.expect("serve");
@@ -163,6 +177,11 @@ async fn post(
             "billsplit" => run::<billsplit::BillSplit>(body, key, rx).await,
             "finance" => run::<finance::Finance>(body, key, rx).await,
             "meet" => run::<meet::Meet>(body, key, rx).await,
+            "grammar" => run::<grammar::Grammar>(body, key, rx).await,
+            "dbclient" => run::<dbclient::DbClient>(body, key, rx).await,
+            "minecraft" => run::<minecraft::Minecraft>(body, key, rx).await,
+            "saas" => run::<saas::Saas>(body, key, rx).await,
+            "smarthome" => run::<smarthome::SmartHome>(body, key, rx).await,
             _ => run::<textstats::TextStats>(body, key, rx).await,
         }
         sessions.lock().unwrap().remove(&sid);

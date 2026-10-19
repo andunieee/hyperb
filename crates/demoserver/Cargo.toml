@@ -20,3 +20,4 @@ hex = "0.4"
 png = "0.18"
 base64 = "0.22"
 qrcode = { version = "0.14", default-features = false }
+harper-core = "2.13.0"

@@ -1,11 +1,24 @@
 //! Helpers shared by the newer demos.
 
 use hyperb_core::identity::PublicKey;
-use hypereffect::{json, Action, Map, Value};
+use hypereffect::{json, Action, Element, Map, Outbox, Value};
 
 /// The session key the transport injected into the signals, if any.
 pub fn key(signals: &Map<String, Value>) -> Option<PublicKey> {
     signals.get(super::KEY_SIGNAL)?.as_str()?.parse().ok()
+}
+
+/// Replaces the elements `ids` with `new`: the old ones are removed and the
+/// ids of the new ones remembered, for a part of the interface that is drawn
+/// again as a whole whenever its data changes.
+pub fn replace(out: &mut Outbox, ids: &mut Vec<String>, new: Vec<Element>) {
+    for id in ids.drain(..) {
+        out.remove(id);
+    }
+    for e in new {
+        ids.push(e.id.clone());
+        out.element(e);
+    }
 }
 
 /// A signal as trimmed text; numbers are written out.
