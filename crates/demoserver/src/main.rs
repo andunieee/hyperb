@@ -5,7 +5,10 @@
 //! cargo run -p hyperb-demoserver [addr]     # default 127.0.0.1:9001
 //! ```
 //!
-//! Paths: `/restaurant` (also `/`), `/therapist`, `/textstats`. Each hello
+//! Paths: `/restaurant` (also `/`), `/therapist`, `/textstats`, `/pomodoro`
+//! (a tick-driven timer), `/qr`, `/chart` (images), `/billsplit`, `/finance`
+//! (an RPN financial calculator) and `/meet` (a Doodle-like scheduler whose
+//! meetings are shared between sessions and owned by keys). Each hello
 //! starts a session with its own app instance, which ends when its event
 //! stream closes (or if no stream is opened within [`STREAM_TIMEOUT`]).
 //!
@@ -14,6 +17,14 @@
 //! hello, is injected into its signals as `__key`, and the apps load the
 //! remembered profile from [`store`].
 
+mod billsplit;
+mod chart;
+mod common;
+mod finance;
+mod img;
+mod meet;
+mod pomodoro;
+mod qr;
 mod restaurant;
 mod store;
 mod textstats;
@@ -36,7 +47,17 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tower_http::cors::{Any, CorsLayer};
 
-const APPS: &[&str] = &["restaurant", "therapist", "textstats"];
+const APPS: &[&str] = &[
+    "restaurant",
+    "therapist",
+    "textstats",
+    "pomodoro",
+    "qr",
+    "chart",
+    "billsplit",
+    "finance",
+    "meet",
+];
 const STREAM_TIMEOUT: Duration = Duration::from_secs(30);
 /// The signal that carries the session key to the apps.
 pub const KEY_SIGNAL: &str = "__key";
@@ -90,6 +111,7 @@ async fn main() {
             timer.tick().await;
             restaurant::GUESTS.prune();
             therapist::PATIENTS.prune();
+            meet::prune();
         }
     });
     axum::serve(listener, app).await.expect("serve");
@@ -135,6 +157,12 @@ async fn post(
         match app {
             "restaurant" => run::<restaurant::Restaurant>(body, key, rx).await,
             "therapist" => run::<therapist::Therapist>(body, key, rx).await,
+            "pomodoro" => run::<pomodoro::Pomodoro>(body, key, rx).await,
+            "qr" => run::<qr::Qr>(body, key, rx).await,
+            "chart" => run::<chart::Chart>(body, key, rx).await,
+            "billsplit" => run::<billsplit::BillSplit>(body, key, rx).await,
+            "finance" => run::<finance::Finance>(body, key, rx).await,
+            "meet" => run::<meet::Meet>(body, key, rx).await,
             _ => run::<textstats::TextStats>(body, key, rx).await,
         }
         sessions.lock().unwrap().remove(&sid);
@@ -315,6 +343,40 @@ fn now_ms() -> f64 {
         .unwrap_or_default()
         .as_secs_f64()
         * 1000.0
+}
+
+/// Helpers for testing an app the way the transport drives it: with the
+/// session key injected into every line the client sends.
+#[cfg(test)]
+mod testutil {
+    use super::*;
+    use hypereffect::server::Loopback;
+
+    pub fn connect<A: App + Default>(key: PublicKey) -> Loopback<A> {
+        let mut l = Loopback {
+            client: hypereffect::client::Client::new(),
+            server: Server::new(),
+        };
+        let hello = l.client.hello(Default::default());
+        l.server.receive(with_key(&hello, key).as_bytes());
+        l.pump();
+        l
+    }
+
+    /// Triggers a handler, if the client lets it, and delivers the response.
+    pub fn trigger<A: App + Default>(
+        l: &mut Loopback<A>,
+        key: PublicKey,
+        id: &str,
+        event: &str,
+    ) -> bool {
+        let Some(line) = l.client.trigger(id, event) else {
+            return false;
+        };
+        l.server.receive(with_key(&line, key).as_bytes());
+        l.pump();
+        true
+    }
 }
 
 #[cfg(test)]

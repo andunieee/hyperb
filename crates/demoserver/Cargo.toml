@@ -17,3 +17,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "tim
 futures-util.workspace = true
 getrandom = "0.2"
 hex = "0.4"
+png = "0.18"
+base64 = "0.22"
+qrcode = { version = "0.14", default-features = false }

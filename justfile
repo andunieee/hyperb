@@ -39,7 +39,7 @@ desktop *args:
 tui *args:
     cargo run -p hyperb-tui -- {{args}}
 
-# Serve the demo apps (restaurant, therapist, textstats) over HTTP + SSE (default 127.0.0.1:9001)
+# Serve the demo apps (restaurant, therapist, textstats, pomodoro, qr, chart, billsplit, finance, meet) over HTTP + SSE (default 127.0.0.1:9001)
 demoserver addr="127.0.0.1:9001":
     cargo run -p hyperb-demoserver -- {{addr}}
 
