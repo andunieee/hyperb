@@ -1,0 +1,17 @@
+[package]
+name = "hyperb-demoapps"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+# The demo apps that keep no state between sessions, or only pretend to: the
+# demoserver serves them, and `hyperb-wasmapps` builds them as wasm modules.
+
+[lib]
+name = "demoapps"
+
+[dependencies]
+hypereffect.workspace = true
+png = "0.18"
+base64 = "0.22"
+qrcode = { version = "0.14", default-features = false }

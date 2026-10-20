@@ -196,13 +196,6 @@ textarea {
   text-align: center;
 }
 
-.hb-suggestions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-}
-
 .hb-key {
   max-width: 100%;
   overflow-wrap: anywhere;

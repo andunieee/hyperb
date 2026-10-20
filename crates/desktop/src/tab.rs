@@ -21,13 +21,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use url::Url;
 
-/// Local demo servers (`cargo run -p hyperb-demoserver`), offered on new tabs.
-const SUGGESTIONS: &[&str] = &[
-    "localhost:9001/restaurant",
-    "localhost:9001/therapist",
-    "localhost:9001/textstats",
-];
-
 /// The widest the rendered page gets; the rest of the window is margin.
 const CONTENT_WIDTH: i32 = 800;
 
@@ -126,7 +119,7 @@ impl Tab {
 
             let content = gtk::Stack::new();
             content.set_vexpand(true);
-            content.add_named(&welcome(weak.clone()), Some("welcome"));
+            content.add_named(&welcome(), Some("welcome"));
             content.add_named(&overlay, Some("page"));
             content.set_visible_child_name("welcome");
 
@@ -399,7 +392,7 @@ impl Tab {
     }
 }
 
-fn welcome(tab: std::rc::Weak<Tab>) -> gtk::Widget {
+fn welcome() -> gtk::Widget {
     let b = gtk::Box::new(gtk::Orientation::Vertical, 12);
     b.set_halign(gtk::Align::Center);
     b.set_valign(gtk::Align::Center);
@@ -414,19 +407,5 @@ fn welcome(tab: std::rc::Weak<Tab>) -> gtk::Widget {
     hint.add_css_class("he-v-caption");
     b.append(&title);
     b.append(&hint);
-    let links = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    links.set_halign(gtk::Align::Center);
-    for s in SUGGESTIONS {
-        let btn = gtk::Button::with_label(s);
-        btn.add_css_class("flat");
-        let tab = tab.clone();
-        btn.connect_clicked(move |_| {
-            if let Some(t) = tab.upgrade() {
-                t.navigate(s);
-            }
-        });
-        links.append(&btn);
-    }
-    b.append(&links);
     b.upcast()
 }

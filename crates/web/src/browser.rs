@@ -24,12 +24,6 @@ use std::collections::HashMap;
 use url::Url;
 use wasm_bindgen::JsCast;
 
-/// Local demo servers (`just demoserver`).
-const SUGGESTIONS: &[&str] = &[
-    "localhost:9001/restaurant",
-    "localhost:9001/therapist",
-    "localhost:9001/textstats",
-];
 const IDENTITY_KEY: &str = "hyperb.identity";
 
 #[derive(Clone, PartialEq)]
@@ -385,7 +379,7 @@ pub fn Browser() -> impl IntoView {
                     }
                         .into_any()
                 } else {
-                    view! { <Welcome ctx go/> }.into_any()
+                    view! { <Welcome ctx/> }.into_any()
                 }
             }}
         </div>
@@ -393,7 +387,7 @@ pub fn Browser() -> impl IntoView {
 }
 
 #[component]
-fn Welcome(ctx: Ctx, go: impl Fn(String) + Copy + Send + 'static) -> impl IntoView {
+fn Welcome(ctx: Ctx) -> impl IntoView {
     view! {
         <div class="hb-welcome">
             <h1 class="he-h1">"hyperb"</h1>
@@ -401,18 +395,6 @@ fn Welcome(ctx: Ctx, go: impl Fn(String) + Copy + Send + 'static) -> impl IntoVi
                 "Enter the address of a hypereffect server, e.g. hyperb://example.com/app. "
                 "Remote servers use https; localhost, IP addresses and .onion use http."
             </p>
-            <div class="hb-suggestions">
-                {SUGGESTIONS
-                    .iter()
-                    .map(|s| {
-                        view! {
-                            <button class="hb-link" on:click=move |_| go(s.to_string())>
-                                {*s}
-                            </button>
-                        }
-                    })
-                    .collect_view()}
-            </div>
             <p class="he-caption">"Your key"</p>
             <code class="hb-key">{ctx.public_key()}</code>
         </div>

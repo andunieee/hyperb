@@ -10,7 +10,6 @@ use super::common::menu;
 use hypereffect::{cel, json, ui, Action, App, Handler, Map, Outbox, Value};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::time::Instant;
 
 const PAGE: usize = 10;
 const MAX_ROWS: usize = 1000;
@@ -1741,14 +1740,17 @@ impl App for DbClient {
                     .unwrap_or_default()
                     .trim()
                     .to_owned();
-                let started = Instant::now();
+                let started = Stopwatch::start();
                 match run(&self.db, &sql) {
                     Ok(answer) => {
-                        let ms = started.elapsed().as_secs_f64() * 1000.0;
+                        let took = started
+                            .ms()
+                            .map(|ms| format!(" in {ms:.1} ms"))
+                            .unwrap_or_default();
                         self.lines = render(&answer);
                         self.page = 0;
                         out.signal(json!({"status": {"kind": "success", "text": format!(
-                            "{} row{} in {ms:.1} ms.", answer.rows.len(), if answer.rows.len() == 1 { "" } else { "s" }
+                            "{} row{}{took}.", answer.rows.len(), if answer.rows.len() == 1 { "" } else { "s" }
                         )}}));
                         self.history.retain(|q| *q != sql);
                         self.history.insert(0, sql);
@@ -1765,6 +1767,22 @@ impl App for DbClient {
             }
             _ => {}
         }
+    }
+}
+
+/// Times a query where there is a clock; wasm modules have none.
+struct Stopwatch(#[cfg(not(target_arch = "wasm32"))] std::time::Instant);
+
+impl Stopwatch {
+    fn start() -> Self {
+        Stopwatch(#[cfg(not(target_arch = "wasm32"))] std::time::Instant::now())
+    }
+
+    fn ms(&self) -> Option<f64> {
+        #[cfg(not(target_arch = "wasm32"))]
+        return Some(self.0.elapsed().as_secs_f64() * 1000.0);
+        #[cfg(target_arch = "wasm32")]
+        None
     }
 }
 

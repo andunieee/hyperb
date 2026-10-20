@@ -1,0 +1,26 @@
+[package]
+name = "hyperb-wasmapps"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+# One demo app per build, chosen by feature: `just wasm-apps` builds each into
+# its own module. With no feature the crate is empty.
+
+[lib]
+name = "wasmapps"
+crate-type = ["cdylib"]
+
+[dependencies]
+hyperb-demoapps = { path = "../demoapps" }
+hypereffect.workspace = true
+
+[features]
+default = []
+qr = []
+textstats = []
+billsplit = []
+finance = []
+chart = []
+minecraft = []
+dbclient = []

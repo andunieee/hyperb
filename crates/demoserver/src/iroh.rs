@@ -26,9 +26,6 @@ pub async fn serve(identity: Identity) {
         Err(e) => return eprintln!("no iroh sessions: {e}"),
     };
     endpoint.online().await;
-    for app in APPS {
-        println!("hyperb://{}/{app}", endpoint.id());
-    }
     while let Some(incoming) = endpoint.accept().await {
         tokio::spawn(async move {
             if let Err(e) = session(incoming).await {

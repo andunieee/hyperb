@@ -23,28 +23,23 @@
 //! The same apps are also served over iroh (see [`iroh`]); the key is then
 //! the one of the iroh connection.
 
-mod billsplit;
-mod chart;
+mod catalog;
 mod common;
-mod dbclient;
-mod finance;
 mod grammar;
-mod img;
 mod iroh;
 mod meet;
-mod minecraft;
 mod pomodoro;
-mod qr;
 mod restaurant;
 mod saas;
 mod smarthome;
 mod store;
-mod textstats;
 mod therapist;
 
+use demoapps::{billsplit, chart, dbclient, finance, img, minecraft, qr, textstats};
 use axum::extract::State;
 use axum::http::{header, HeaderMap, HeaderName, Method, StatusCode, Uri};
 use axum::response::sse::{self, KeepAlive, Sse};
+use axum::response::Html;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
@@ -116,20 +111,26 @@ async fn main() {
         .route("/{app}", get(stream).post(post))
         .layer(cors)
         .with_state(Sessions::default());
+    let mut catalog = catalog::Catalog::default();
+    let wasm_dir = std::env::var_os("HYPERB_WASM_DIR").unwrap_or_else(|| "wasm-apps".into());
+    catalog.load_wasm(wasm_dir.as_ref());
+    if catalog.wasm.is_empty() {
+        eprintln!("no wasm apps in {} (`just wasm-apps` builds them)", wasm_dir.to_string_lossy());
+    }
     match hyperb_core::identity::default_path()
         .map(|p| p.with_file_name("demoserver-iroh"))
         .ok_or_else(|| "no config directory".to_string())
         .and_then(|p| Identity::load_or_create(&p).map_err(|e| e.to_string()))
     {
         Ok(identity) => {
+            catalog.iroh_id = Some(identity.public().to_string());
             tokio::spawn(iroh::serve(identity));
         }
         Err(e) => eprintln!("no iroh sessions: {e}"),
     }
     let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
-    for app in APPS {
-        println!("http://{addr}/{app}");
-    }
+    print!("{}", catalog.listing(&addr));
+    let _ = catalog::CATALOG.set(catalog);
     // Trim forgotten profiles now and then; getting a profile also refreshes
     // it lazily, this is only for visitors who never come back.
     tokio::spawn(async {
@@ -191,6 +192,22 @@ async fn post(
 
 /// Opens a session's event stream.
 async fn stream(State(sessions): State<Sessions>, uri: Uri, headers: HeaderMap) -> Response {
+    if let Some(name) = uri.path().trim_matches('/').strip_suffix(".wasm") {
+        return match catalog::CATALOG.get().and_then(|c| c.wasm.get(name)) {
+            Some(wasm) => ([(header::CONTENT_TYPE, "application/wasm")], wasm.bytes.clone())
+                .into_response(),
+            None => (StatusCode::NOT_FOUND, "no wasm app here").into_response(),
+        };
+    }
+    // Anything that is not a renderer asking for the event stream is a person
+    // with a web browser.
+    let wants_events = header_str(&headers, header::ACCEPT.as_str())
+        .is_some_and(|a| a.contains("text/event-stream"));
+    if !wants_events && app_at(&uri).is_some() {
+        let host = header_str(&headers, header::HOST.as_str()).unwrap_or("localhost:9001");
+        let page = catalog::CATALOG.get().map(|c| c.page(host)).unwrap_or_default();
+        return Html(page).into_response();
+    }
     let Some(app) = app_at(&uri) else {
         return (StatusCode::NOT_FOUND, "no app here").into_response();
     };

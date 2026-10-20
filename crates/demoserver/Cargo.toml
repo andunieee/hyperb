@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 hyperb-core.workspace = true
+hyperb-demoapps = { path = "../demoapps" }
 hypereffect.workspace = true
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
@@ -18,10 +19,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "tim
 futures-util.workspace = true
 getrandom = "0.2"
 hex = "0.4"
-png = "0.18"
-base64 = "0.22"
-qrcode = { version = "0.14", default-features = false }
 harper-core = "2.13.0"
 
 [dev-dependencies]
-hyperb-core = { workspace = true, features = ["iroh"] }
+hyperb-core = { workspace = true, features = ["iroh", "wasm"] }

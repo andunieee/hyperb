@@ -8,7 +8,8 @@ session. The hypereffect message protocol itself is not covered here.
 Status: all of it is implemented in `hyperb-core` (`address.rs`, `http.rs`,
 and `net/iroh.rs`, `net/wasm.rs` behind the `iroh` and `wasm` features, which
 the desktop and terminal renderers enable; the web and Android builds do not
-have them). The demo server serves its apps over HTTP and iroh.
+have them). The demo server serves its apps over HTTP and iroh, some of
+them also as wasm modules (`/<app>.wasm`), and prints their addresses.
 
 ## 1. Addresses
 

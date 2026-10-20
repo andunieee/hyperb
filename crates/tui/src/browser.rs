@@ -23,14 +23,6 @@ use std::time::Instant;
 use unicode_width::UnicodeWidthStr;
 use url::Url;
 
-/// Local demo servers (`cargo run -p hyperb-demoserver`), offered on the
-/// welcome screen.
-const SUGGESTIONS: &[&str] = &[
-    "localhost:9001/restaurant",
-    "localhost:9001/therapist",
-    "localhost:9001/textstats",
-];
-
 pub struct Browser {
     pub title: String,
     pub url_focused: bool,
@@ -41,7 +33,6 @@ pub struct Browser {
     tree: Vec<ResolvedTree>,
     /// Why the last address could not be used.
     error: Option<String>,
-    suggestion: usize,
     tx: Sender<Msg>,
     epoch: Instant,
     rects: Rects,
@@ -72,7 +63,6 @@ struct Rects {
     url: Rect,
     banner: Option<Rect>,
     content: Rect,
-    suggestions: Vec<Rect>,
 }
 
 impl Browser {
@@ -91,7 +81,6 @@ impl Browser {
             page: Page::new(),
             tree: Vec::new(),
             error: None,
-            suggestion: 0,
             tx,
             epoch: Instant::now(),
             rects: Rects::default(),
@@ -261,13 +250,7 @@ impl Browser {
         }
         if self.welcome() {
             match k.code {
-                KeyCode::Up | KeyCode::BackTab if self.suggestion == 0 => self.focus_url(),
-                KeyCode::Up | KeyCode::BackTab => self.suggestion -= 1,
-                KeyCode::Down | KeyCode::Tab => {
-                    self.suggestion = (self.suggestion + 1).min(SUGGESTIONS.len() - 1)
-                }
-                KeyCode::Enter => self.navigate(SUGGESTIONS[self.suggestion]),
-                KeyCode::Esc => self.focus_url(),
+                KeyCode::Enter | KeyCode::Esc => self.focus_url(),
                 KeyCode::Char(_) => {
                     self.focus_url();
                     self.url.key(&k, false);
@@ -301,9 +284,6 @@ impl Browser {
                 return;
             }
             if self.welcome() {
-                if let Some(i) = self.rects.suggestions.iter().position(|r| r.contains(p)) {
-                    self.navigate(SUGGESTIONS[i]);
-                }
                 return;
             }
         }
@@ -433,7 +413,7 @@ impl Browser {
             "Enter the address of a hypereffect server, e.g. hyperb://example.com/app. \
                     Remote servers use https; localhost, IP addresses and .onion use http.";
         let hint = textwrap::wrap(hint, (area.width.saturating_sub(4) as usize).clamp(1, 64));
-        let height = 2 + hint.len() as u16 + 1 + SUGGESTIONS.len() as u16 + 2;
+        let height = 2 + hint.len() as u16;
         let mut y = area.y + area.height.saturating_sub(height) / 2;
         let center = |buf: &mut Buffer, y: u16, s: &str, style: Style| {
             let w = s.width() as u16;
@@ -456,29 +436,6 @@ impl Browser {
         y += 2;
         for l in &hint {
             center(buf, y, l, Style::new().fg(Color::Gray));
-            y += 1;
-        }
-        y += 1;
-        self.rects.suggestions.clear();
-        let w = SUGGESTIONS.iter().map(|s| s.width()).max().unwrap_or(0) as u16 + 4;
-        let x = area.x + area.width.saturating_sub(w) / 2;
-        for (i, s) in SUGGESTIONS.iter().enumerate() {
-            let on = i == self.suggestion && !self.url_focused;
-            let style = if on {
-                Style::new().fg(ACCENT).add_modifier(Modifier::REVERSED)
-            } else {
-                Style::new().fg(ACCENT)
-            };
-            if y < area.bottom() {
-                buf.set_stringn(
-                    x,
-                    y,
-                    format!(" {} {s} ", if on { "›" } else { " " }),
-                    w as usize,
-                    style,
-                );
-            }
-            self.rects.suggestions.push(Rect::new(x, y, w, 1));
             y += 1;
         }
     }

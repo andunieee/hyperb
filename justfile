@@ -39,14 +39,28 @@ desktop *args:
 tui *args:
     cargo run -p hyperb-tui -- {{args}}
 
-# Serve the demo apps (restaurant, therapist, textstats, pomodoro, qr, chart, billsplit, finance, meet, grammar, dbclient, minecraft, saas, smarthome) over HTTP + SSE (default 127.0.0.1:9001)
-demoserver addr="127.0.0.1:9001":
+wasm_apps := "qr textstats billsplit finance chart minecraft dbclient"
+
+# Build the stateless demo apps as wasm modules into wasm-apps/
+wasm-apps:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p wasm-apps
+    target=$(cargo metadata --no-deps --format-version 1 | jq -r .target_directory)
+    for app in {{wasm_apps}}; do
+        cargo build -q --target wasm32-unknown-unknown --release -p hyperb-wasmapps --features "$app"
+        cp "$target/wasm32-unknown-unknown/release/wasmapps.wasm" "wasm-apps/$app.wasm"
+    done
+
+# Serve the demo apps over HTTP + SSE (default 127.0.0.1:9001), iroh and wasm, and print their hyperb:// addresses
+demoserver addr="127.0.0.1:9001": wasm-apps
     cargo run -p hyperb-demoserver -- {{addr}}
 
 # Run the demoserver and the desktop app together
 demo:
     #!/usr/bin/env bash
     set -euo pipefail
+    just wasm-apps
     cargo build -p hyperb-demoserver -p hyperb-desktop
     cargo run -q -p hyperb-demoserver &
     trap 'kill $!' EXIT

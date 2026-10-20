@@ -17,7 +17,7 @@ const MAX_POINTS: usize = 24;
 const BACKGROUND: Rgb = [255, 255, 255];
 const INK: Rgb = [0x33, 0x33, 0x33];
 const GRID: Rgb = [0xDD, 0xDD, 0xDD];
-pub(crate) const PALETTE: [Rgb; 8] = [
+pub const PALETTE: [Rgb; 8] = [
     [0x25, 0x63, 0xEB],
     [0xF5, 0x9E, 0x0B],
     [0x16, 0xA3, 0x4A],
@@ -41,7 +41,7 @@ const SAMPLE: &str = "Mon, 12\nTue, 19\nWed, 7\nThu, 15\nFri, 22\nSat, 9";
 pub struct Chart;
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct Point {
+pub struct Point {
     pub label: String,
     pub value: f64,
 }
@@ -149,7 +149,7 @@ fn centered(c: &mut Canvas, cx: i32, y: i32, scale: i32, s: &str, color: Rgb) {
     c.text(cx - text_width(s, scale) / 2, y, scale, s, color);
 }
 
-pub(crate) fn draw(
+pub fn draw(
     kind: &str,
     title: &str,
     points: &[Point],
