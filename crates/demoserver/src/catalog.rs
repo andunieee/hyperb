@@ -26,21 +26,17 @@ pub struct Wasm {
 pub enum Kind {
     Http,
     Iroh,
-    /// A wasm module the renderer downloads from this server.
     RemoteWasm,
-    /// A wasm module on this machine's disk.
-    LocalWasm,
 }
 
 impl Kind {
-    const ALL: [Kind; 4] = [Kind::Http, Kind::Iroh, Kind::RemoteWasm, Kind::LocalWasm];
+    const ALL: [Kind; 3] = [Kind::Http, Kind::Iroh, Kind::RemoteWasm];
 
     pub fn title(self) -> &'static str {
         match self {
             Kind::Http => "Over HTTP",
             Kind::Iroh => "Over iroh",
             Kind::RemoteWasm => "As wasm apps, downloaded from this server",
-            Kind::LocalWasm => "As wasm apps, from this machine's files",
         }
     }
 }
@@ -92,12 +88,6 @@ impl Catalog {
             out.push(Entry {
                 kind: Kind::RemoteWasm,
                 url: format!("hyperb://{host}/{name}.wasm"),
-            });
-        }
-        for wasm in self.wasm.values() {
-            out.push(Entry {
-                kind: Kind::LocalWasm,
-                url: format!("hyperb://{}", wasm.path.display()),
             });
         }
         out
