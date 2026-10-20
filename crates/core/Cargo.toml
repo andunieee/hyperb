@@ -19,6 +19,8 @@ reqwest = { version = "0.13", default-features = false, features = ["stream"], o
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"], optional = true }
+iroh = { version = "1.3", optional = true }
+wasmtime = { version = "48", default-features = false, features = ["runtime", "cranelift", "std", "wat"], optional = true }
 
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["native-tls"], optional = true }
@@ -38,3 +40,6 @@ default = []
 # Transports (HTTP with SSE). On native hosts they run on a background tokio
 # runtime; on wasm32 they use fetch and the browser's event loop.
 net = ["dep:async-channel", "dep:futures-util", "dep:reqwest", "dep:rustls", "dep:tokio", "dep:wasm-bindgen-futures"]
+# Sessions over iroh and local/remote wasm apps (native hosts only).
+iroh = ["net", "dep:iroh"]
+wasm = ["net", "dep:wasmtime"]

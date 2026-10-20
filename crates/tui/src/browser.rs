@@ -347,7 +347,7 @@ impl Browser {
             (State::Connecting, _) => {
                 (SPINNER[(tick / 80) as usize % SPINNER.len()], Color::Yellow)
             }
-            (State::Open, Some("https")) => ("●", Color::Green),
+            (State::Open, Some("https" | "iroh")) => ("●", Color::Green),
             (State::Open, _) => ("●", Color::Yellow),
             (State::Closed(_), _) => ("●", Color::Red),
             (State::Idle, _) => (" ", Color::Reset),
@@ -430,8 +430,8 @@ impl Browser {
 
     fn draw_welcome(&mut self, area: Rect, buf: &mut Buffer) {
         let hint =
-            "Enter the address of a hypereffect server. http:// and https:// are used as given; \
-                    without a scheme, local hosts use http:// and others https://.";
+            "Enter the address of a hypereffect server, e.g. hyperb://example.com/app. \
+                    Remote servers use https; localhost, IP addresses and .onion use http.";
         let hint = textwrap::wrap(hint, (area.width.saturating_sub(4) as usize).clamp(1, 64));
         let height = 2 + hint.len() as u16 + 1 + SUGGESTIONS.len() as u16 + 2;
         let mut y = area.y + area.height.saturating_sub(height) / 2;

@@ -1,5 +1,6 @@
-//! Transports for hypereffect sessions, chosen by the URL scheme. Only HTTP
-//! ([`crate::http`]) exists so far.
+//! Transports for hypereffect sessions, chosen by the URL scheme that
+//! [`crate::address::normalize`] produces: `http`/`https` ([`crate::http`]),
+//! `iroh` and `wasm` (features `iroh` and `wasm`; see `SPEC.md`).
 //!
 //! Every transport behaves the same to the renderer: after [`Event::Open`]
 //! the first line sent must be the `hello`, and lines from the server arrive
@@ -11,7 +12,12 @@
 //! wasm32 they run on the browser's event loop and use fetch.
 
 mod http;
+#[cfg(feature = "iroh")]
+mod iroh;
+#[cfg(feature = "wasm")]
+mod wasm;
 
+use crate::address::{self, Kind};
 use crate::identity::Identity;
 use futures_util::future::{AbortHandle, Abortable};
 use std::future::Future;
@@ -42,9 +48,14 @@ impl Connection {
         let (url, identity) = (url.clone(), identity.clone());
         spawn(async move {
             let run = async {
-                match url.scheme() {
-                    "http" | "https" => http::run(url, identity, out_rx, &ev_tx).await,
-                    s => Err(format!("no transport for '{s}'")),
+                match address::kind(&url) {
+                    Kind::Http => http::run(url, identity, out_rx, &ev_tx).await,
+                    #[cfg(feature = "iroh")]
+                    Kind::Iroh => iroh::run(url, identity, out_rx, &ev_tx).await,
+                    #[cfg(feature = "wasm")]
+                    Kind::LocalWasm | Kind::RemoteWasm => wasm::run(url, out_rx, &ev_tx).await,
+                    #[allow(unreachable_patterns)]
+                    k => Err(format!("{k:?} sessions are not available in this build")),
                 }
             };
             if let Ok(result) = Abortable::new(run, reg).await {

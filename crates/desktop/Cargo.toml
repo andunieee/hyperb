@@ -8,7 +8,7 @@ name = "hyperb-desktop"
 path = "src/main.rs"
 
 [dependencies]
-hyperb-core = { workspace = true, features = ["net"] }
+hyperb-core = { workspace = true, features = ["net", "iroh", "wasm"] }
 gtk4 = { version = "0.10", features = ["v4_12"] }
 gio = "0.21"
 glib = "0.21"

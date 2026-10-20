@@ -190,8 +190,8 @@ private fun Welcome(b: Browser) {
     ) {
         Text("hyperb", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.ExtraBold)
         Text(
-            "Enter the address of a hypereffect server. http:// and https:// are used as given; " +
-                "without a scheme, local hosts use http:// and others https://.",
+            "Enter the address of a hypereffect server, e.g. hyperb://example.com/app. " +
+                "Remote servers use https; localhost, IP addresses and .onion use http.",
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

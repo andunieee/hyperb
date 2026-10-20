@@ -306,7 +306,7 @@ pub fn Browser() -> impl IntoView {
     let (status, status_title) = (
         move || match (
             state(),
-            ctx.url.with(|u| u.as_ref().map(|u| u.scheme() == "https")),
+            ctx.url.with(|u| u.as_ref().map(address::is_secure)),
         ) {
             (Some(State::Open), Some(true)) => "secure",
             (Some(State::Open), _) => "insecure",
@@ -315,7 +315,7 @@ pub fn Browser() -> impl IntoView {
         },
         move || match (
             state(),
-            ctx.url.with(|u| u.as_ref().map(|u| u.scheme() == "https")),
+            ctx.url.with(|u| u.as_ref().map(address::is_secure)),
         ) {
             (Some(State::Open), Some(true)) => "Connected (encrypted)",
             (Some(State::Open), _) => "Connected (not encrypted)",
@@ -398,8 +398,8 @@ fn Welcome(ctx: Ctx, go: impl Fn(String) + Copy + Send + 'static) -> impl IntoVi
         <div class="hb-welcome">
             <h1 class="he-h1">"hyperb"</h1>
             <p class="he-caption">
-                "Enter the address of a hypereffect server. http:// and https:// are used as given; "
-                "without a scheme, local hosts use http:// and others https://."
+                "Enter the address of a hypereffect server, e.g. hyperb://example.com/app. "
+                "Remote servers use https; localhost, IP addresses and .onion use http."
             </p>
             <div class="hb-suggestions">
                 {SUGGESTIONS

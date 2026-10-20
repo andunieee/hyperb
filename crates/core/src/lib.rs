@@ -1,7 +1,8 @@
 //! Shared logic used by desktop (gtk4), terminal (ratatui), web (leptos),
 //! android (kotlin via JNI).
 //!
-//! - [`address`]: turning what the user typed in the URL bar into a server URL.
+//! - [`address`]: turning what the user typed in the URL bar into a session URL
+//!   (`hyperb://`, see `SPEC.md`).
 //! - [`identity`]: the renderer's ed25519 keypair, presented to servers.
 //! - [`http`]: the HTTP transport's protocol, shared with servers; [`sse`]
 //!   parses its event stream.

@@ -19,6 +19,9 @@
 //! remembered between sessions by their public key: the key arrives with the
 //! hello, is injected into its signals as `__key`, and the apps load the
 //! remembered profile from [`store`].
+//!
+//! The same apps are also served over iroh (see [`iroh`]); the key is then
+//! the one of the iroh connection.
 
 mod billsplit;
 mod chart;
@@ -27,6 +30,7 @@ mod dbclient;
 mod finance;
 mod grammar;
 mod img;
+mod iroh;
 mod meet;
 mod minecraft;
 mod pomodoro;
@@ -46,7 +50,7 @@ use axum::routing::get;
 use axum::Router;
 use futures_util::stream::{self, Stream, StreamExt};
 use hyperb_core::http::{line_to_event, KEY, SESSION, SIGNATURE};
-use hyperb_core::identity::PublicKey;
+use hyperb_core::identity::{Identity, PublicKey};
 use hypereffect::{serde_json, App, Server};
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -112,6 +116,16 @@ async fn main() {
         .route("/{app}", get(stream).post(post))
         .layer(cors)
         .with_state(Sessions::default());
+    match hyperb_core::identity::default_path()
+        .map(|p| p.with_file_name("demoserver-iroh"))
+        .ok_or_else(|| "no config directory".to_string())
+        .and_then(|p| Identity::load_or_create(&p).map_err(|e| e.to_string()))
+    {
+        Ok(identity) => {
+            tokio::spawn(iroh::serve(identity));
+        }
+        Err(e) => eprintln!("no iroh sessions: {e}"),
+    }
     let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
     for app in APPS {
         println!("http://{addr}/{app}");
@@ -168,22 +182,7 @@ async fn post(
     println!("session {app} for {key}");
     let (sessions, sid) = (sessions.clone(), id.clone());
     tokio::spawn(async move {
-        match app {
-            "restaurant" => run::<restaurant::Restaurant>(body, key, rx).await,
-            "therapist" => run::<therapist::Therapist>(body, key, rx).await,
-            "pomodoro" => run::<pomodoro::Pomodoro>(body, key, rx).await,
-            "qr" => run::<qr::Qr>(body, key, rx).await,
-            "chart" => run::<chart::Chart>(body, key, rx).await,
-            "billsplit" => run::<billsplit::BillSplit>(body, key, rx).await,
-            "finance" => run::<finance::Finance>(body, key, rx).await,
-            "meet" => run::<meet::Meet>(body, key, rx).await,
-            "grammar" => run::<grammar::Grammar>(body, key, rx).await,
-            "dbclient" => run::<dbclient::DbClient>(body, key, rx).await,
-            "minecraft" => run::<minecraft::Minecraft>(body, key, rx).await,
-            "saas" => run::<saas::Saas>(body, key, rx).await,
-            "smarthome" => run::<smarthome::SmartHome>(body, key, rx).await,
-            _ => run::<textstats::TextStats>(body, key, rx).await,
-        }
+        start(app, body, key, rx).await;
         sessions.lock().unwrap().remove(&sid);
         println!("session {app} for {key} ended");
     });
@@ -249,6 +248,31 @@ fn authorize<'a>(
         return deny("bad signature");
     }
     Ok(s)
+}
+
+/// Runs an instance of `app` until its stream closes.
+async fn start(
+    app: &str,
+    hello: String,
+    key: PublicKey,
+    cmds: mpsc::UnboundedReceiver<Cmd>,
+) {
+    match app {
+        "restaurant" => run::<restaurant::Restaurant>(hello, key, cmds).await,
+        "therapist" => run::<therapist::Therapist>(hello, key, cmds).await,
+        "pomodoro" => run::<pomodoro::Pomodoro>(hello, key, cmds).await,
+        "qr" => run::<qr::Qr>(hello, key, cmds).await,
+        "chart" => run::<chart::Chart>(hello, key, cmds).await,
+        "billsplit" => run::<billsplit::BillSplit>(hello, key, cmds).await,
+        "finance" => run::<finance::Finance>(hello, key, cmds).await,
+        "meet" => run::<meet::Meet>(hello, key, cmds).await,
+        "grammar" => run::<grammar::Grammar>(hello, key, cmds).await,
+        "dbclient" => run::<dbclient::DbClient>(hello, key, cmds).await,
+        "minecraft" => run::<minecraft::Minecraft>(hello, key, cmds).await,
+        "saas" => run::<saas::Saas>(hello, key, cmds).await,
+        "smarthome" => run::<smarthome::SmartHome>(hello, key, cmds).await,
+        _ => run::<textstats::TextStats>(hello, key, cmds).await,
+    }
 }
 
 /// Runs one app instance until its stream closes.
@@ -340,7 +364,11 @@ fn receive<A: App + Default>(server: &mut Server<A>, mut lines: String) {
 }
 
 fn app_at(uri: &Uri) -> Option<&'static str> {
-    match uri.path().trim_matches('/') {
+    app_at_path(uri.path())
+}
+
+fn app_at_path(path: &str) -> Option<&'static str> {
+    match path.trim_matches('/') {
         "" => Some("restaurant"),
         p => APPS.iter().copied().find(|a| *a == p),
     }

@@ -8,7 +8,7 @@ name = "hyperb-tui"
 path = "src/main.rs"
 
 [dependencies]
-hyperb-core = { workspace = true, features = ["net"] }
+hyperb-core = { workspace = true, features = ["net", "iroh", "wasm"] }
 ratatui = "0.30"
 textwrap = "0.16"
 unicode-width = "0.2"

@@ -370,7 +370,7 @@ impl Tab {
         self.spinner.set_visible(connecting);
         self.spinner.set_spinning(connecting);
         let icon = match (&s.state, s.url.as_ref().map(Url::scheme)) {
-            (State::Open, Some("https")) => Some("channel-secure-symbolic"),
+            (State::Open, Some("https" | "iroh")) => Some("channel-secure-symbolic"),
             (State::Open, _) => Some("channel-insecure-symbolic"),
             (State::Closed(_), _) => Some("network-offline-symbolic"),
             _ => None,
@@ -407,8 +407,8 @@ fn welcome(tab: std::rc::Weak<Tab>) -> gtk::Widget {
     let title = gtk::Label::new(Some("hyperb"));
     title.add_css_class("he-v-h1");
     let hint = gtk::Label::new(Some(
-        "Enter the address of a hypereffect server.\n\
-         http:// and https:// are used as given; without a scheme, local hosts use http:// and others https://.",
+        "Enter the address of a hypereffect server, e.g. hyperb://example.com/app.\n\
+         Remote servers use https; localhost, IP addresses and .onion use http.",
     ));
     hint.set_justify(gtk::Justification::Center);
     hint.add_css_class("he-v-caption");
