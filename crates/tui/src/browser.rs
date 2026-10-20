@@ -95,7 +95,7 @@ impl Browser {
 
     /// Opens the one address this process browses, chosen on the command line.
     pub fn open(&mut self, url: Url) {
-        self.url = url.as_str().to_string();
+        self.url = address::hyperb(&url);
         self.title = address::label(&url);
         self.connect(url);
     }

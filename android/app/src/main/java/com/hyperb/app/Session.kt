@@ -40,6 +40,8 @@ class Session(address: String) {
 
 class Snapshot(
     val url: String,
+    /** The user-facing `hyperb://` form of [url], for the address bar. */
+    val address: String,
     val label: String,
     /** `connecting`, `open` or `closed`. */
     val state: String,
@@ -53,6 +55,7 @@ class Snapshot(
             val o = JSONObject(json)
             return Snapshot(
                 url = o.getString("url"),
+                address = o.optString("address", o.getString("url")),
                 label = o.getString("label"),
                 state = o.getString("state"),
                 reason = o.opt("reason") as? String,

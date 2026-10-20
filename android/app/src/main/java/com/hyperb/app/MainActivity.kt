@@ -146,7 +146,7 @@ class Browser(
         val snap = s.snapshot()
         snapshot = snap
         snap?.let {
-            address = it.url
+            address = it.address
             persistAddress(it.url)
             updateLibrary(library.record(it.url, it.label, System.currentTimeMillis()))
         }

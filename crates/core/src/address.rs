@@ -7,6 +7,10 @@
 //! - `http` / `https`: HTTP with SSE.
 //! - `iroh`: an iroh session; the host is the endpoint id (64 hex chars).
 //! - `wasm`: a local wasm app; the path is the file, the fragment the route.
+//!
+//! The transport scheme is internal. Address bars display the user-facing
+//! `hyperb://` form instead, produced by [`hyperb`]; what users type in may
+//! always be fed back in, and normalize accepts transports schemes too.
 
 use url::{Host, Url};
 
@@ -20,7 +24,9 @@ pub fn normalize(input: &str) -> Result<Url, String> {
         None => (None, input),
     };
     let forced = match scheme.as_deref() {
-        None | Some("hyperb") | Some("web+hyperb") => None,
+        // `hyperb` is the user-facing scheme; `iroh` and `wasm` are accepted
+        // already normalized (a reconnect or a reshared display address).
+        None | Some("hyperb") | Some("web+hyperb") | Some("iroh") | Some("wasm") => None,
         Some("http") | Some("hyperb+http") | Some("web+hyperb+http") => Some("http"),
         Some("https") | Some("hyperb+https") | Some("web+hyperb+https") => Some("https"),
         Some(other) => return Err(format!("unsupported scheme '{other}'")),
@@ -104,6 +110,42 @@ pub fn label(url: &Url) -> String {
             let port = url.port().map(|p| format!(":{p}")).unwrap_or_default();
             let path = url.path().trim_end_matches('/');
             format!("{host}{port}{path}")
+        }
+    }
+}
+
+/// The user-facing `hyperb://` form of a normalized address, for display.
+///
+/// Address bars show this, not the normalized URL: `hyperb://` is the scheme
+/// users type and share, `http`, `iroh` and `wasm` are internal transports.
+/// Displays keep the scheme the user chose where `hyperb://` would resolve it
+/// differently (`hyperb+http` on an https-defaulting host and vice versa).
+/// Feeding the result into [`normalize`] gives back `url`.
+pub fn hyperb(url: &Url) -> String {
+    let query = url.query().map(|q| format!("?{q}")).unwrap_or_default();
+    match url.scheme() {
+        "iroh" => {
+            let id = url.host_str().unwrap_or_default();
+            format!("hyperb://{id}{}{query}", url.path())
+        }
+        "wasm" => {
+            let mut out = format!("hyperb://{}", url.path());
+            if let Some(route) = url.fragment() {
+                out.push_str(&format!("#{route}"));
+            }
+            out
+        }
+        scheme => {
+            let prefix = match (scheme, url.host()) {
+                ("http", Some(h)) if !is_plain_host(&h) => "hyperb+http",
+                ("https", Some(h)) if is_plain_host(&h) => "hyperb+https",
+                _ => "hyperb",
+            };
+            let rest = match url.as_str().split_once("://") {
+                Some((_, r)) => r,
+                None => "",
+            };
+            format!("{prefix}://{rest}")
         }
     }
 }
@@ -311,6 +353,44 @@ mod tests {
         assert_eq!(l("example.com/a/b/"), "example.com/a/b");
         assert_eq!(l(&format!("hyperb://{ID}/menu")), "01234567…/menu");
         assert_eq!(l("hyperb:///opt/apps/a.wasm"), "a.wasm");
+    }
+
+    #[test]
+    fn display() {
+        let d = |s: &str| hyperb(&normalize(s).unwrap());
+        assert_eq!(d("https://example.com/a"), "hyperb://example.com/a");
+        assert_eq!(d("hyperb://localhost:9001"), "hyperb://localhost:9001/");
+        assert_eq!(d("http://example.com"), "hyperb+http://example.com/");
+        assert_eq!(
+            d("hyperb://localhost:9001/a.wasm?x=1"),
+            "hyperb://localhost:9001/a.wasm?x=1"
+        );
+        let id = ID.to_ascii_lowercase();
+        assert_eq!(
+            d(&format!("hyperb://{ID}/menu")),
+            format!("hyperb://{id}/menu")
+        );
+        assert_eq!(
+            d("/opt/apps/a.wasm#/menu"),
+            "hyperb:///opt/apps/a.wasm#/menu"
+        );
+        // Display addresses round-trip through normalize, and so do the
+        // transport schemes, which normalize also accepts on input.
+        for s in [
+            "hyperb://example.com",
+            "https://example.com/a",
+            "http://localhost:9001/x",
+            "http://example.com/x?a=1",
+            "hyperb+http://example.com/x",
+            "https://localhost:9001",
+            &format!("hyperb://{ID}/menu?x=1"),
+            "wasm:///opt/apps/a.wasm",
+            "wasm:///opt/apps/a.wasm#/menu",
+        ] {
+            let url = normalize(s).unwrap();
+            assert_eq!(normalize(&hyperb(&url)), Ok(url.clone()), "{s}");
+            assert_eq!(normalize(url.as_str()).unwrap(), url, "{s}");
+        }
     }
 
     #[test]

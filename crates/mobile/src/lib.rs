@@ -80,6 +80,7 @@ impl Inner {
         };
         json!({
             "url": self.url.as_str(),
+            "address": address::hyperb(&self.url),
             "label": address::label(&self.url),
             "state": state,
             "reason": reason,

@@ -243,9 +243,9 @@ impl Tab {
     pub fn navigate(self: &Rc<Self>, input: &str) {
         match address::normalize(input) {
             Ok(url) => {
-                self.url_entry.set_text(url.as_str());
+                self.url_entry.set_text(&address::hyperb(&url));
                 self.title.set_text(&address::label(&url));
-                self.title.set_tooltip_text(Some(url.as_str()));
+                self.title.set_tooltip_text(Some(address::hyperb(&url).as_str()));
                 self.content.grab_focus();
                 self.connect(url);
             }

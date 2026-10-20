@@ -364,13 +364,13 @@ pub fn Browser() -> impl IntoView {
     let show_library = RwSignal::new(false);
     let go = move |input: String| match ctx.navigate(&input) {
         Ok(()) => {
-            let url = ctx
+            let addr = ctx
                 .url
                 .get_untracked()
-                .map(String::from)
+                .map(|u| address::hyperb(&u))
                 .unwrap_or_default();
-            set_query_address(&url);
-            address.set(url);
+            set_query_address(&addr);
+            address.set(addr);
             error.set(None);
         }
         Err(e) => error.set(Some(e)),
