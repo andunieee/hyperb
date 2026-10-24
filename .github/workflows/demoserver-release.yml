@@ -1,0 +1,66 @@
+name: Build hyperb demoserver release
+
+# Manual only. Builds a static (musl) x86_64 demoserver in Alpine and attaches
+# it to a GitHub release, which can be downloaded without authentication.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: alpine:3.24
+    env:
+      OPENSSL_STATIC: "1"
+      RUSTFLAGS: "-C debuginfo=0"
+    steps:
+      - name: Install toolchain
+        run: |
+          apk add --no-cache \
+            build-base cargo rust musl-dev pkgconf \
+            openssl-dev openssl-libs-static \
+            cmake perl git curl jq tar gzip file
+
+      - name: Check out source
+        run: git clone --depth 1 https://github.com/andunieee/hyperb /src
+
+      - name: Build demoserver
+        working-directory: /src
+        run: |
+          cargo build --release -p hyperb-demoserver
+          strip target/release/hyperb-demoserver
+          file target/release/hyperb-demoserver
+
+      - name: Package
+        working-directory: /src
+        run: |
+          tar -czf hyperb-demoserver-x86_64-linux-musl.tar.gz \
+            -C target/release hyperb-demoserver
+          sha256sum hyperb-demoserver-x86_64-linux-musl.tar.gz \
+            > hyperb-demoserver-x86_64-linux-musl.tar.gz.sha256
+
+      - name: Publish release asset
+        working-directory: /src
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: demoserver-${{ github.run_number }}-${{ github.run_attempt }}
+        run: |
+          set -eu
+          api="https://api.github.com/repos/$REPO"
+          release_id=$(curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$api/releases" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"hyperb demoserver $TAG\",\"body\":\"Static x86_64 Linux build of hyperb-demoserver.\"}" \
+            | jq -er .id)
+          for f in hyperb-demoserver-x86_64-linux-musl.tar.gz \
+                   hyperb-demoserver-x86_64-linux-musl.tar.gz.sha256; do
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$f" \
+              "https://uploads.github.com/repos/$REPO/releases/$release_id/assets?name=$f"
+          done
