@@ -3,6 +3,8 @@ name: Build hyperb demoserver release
 # Manual only. Builds a static (musl) x86_64 demoserver in Alpine and attaches
 # it to a GitHub release, which can be downloaded without authentication.
 on:
+  push:
+    branches: [build-demoserver]
   workflow_dispatch:
 
 permissions:
