@@ -1,0 +1,89 @@
+name: Build Android app release
+
+# Manual only. Builds the hyperb Android app (Rust JNI library + Kotlin/Compose
+# UI) and attaches an installable APK to a GitHub release, so it can be
+# downloaded without a local Android toolchain.
+on:
+  push:
+    branches: [build-android]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Must match `ANDROID_NDK_HOME` in the justfile.
+      NDK_VERSION: 26.3.11579264
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK and NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager --install "ndk;$NDK_VERSION" "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          key: android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build Rust JNI library
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+        run: |
+          cargo ndk \
+            -t arm64-v8a -t armeabi-v7a -t x86_64 \
+            -o android/app/src/main/jniLibs \
+            build --release -p hyperb-mobile
+          find android/app/src/main/jniLibs -name '*.so' -exec ls -lh {} \;
+
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Package
+        run: |
+          set -eu
+          apk=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$apk"
+          cp "$apk" hyperb-android.apk
+          sha256sum hyperb-android.apk > hyperb-android.apk.sha256
+          ls -lh hyperb-android.apk
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: android-${{ github.run_number }}-${{ github.run_attempt }}
+        run: |
+          set -eu
+          api="https://api.github.com/repos/$REPO"
+          release_id=$(curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$api/releases" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"hyperb Android $TAG\",\"body\":\"Android APK (debug-signed, arm64-v8a / armeabi-v7a / x86_64).\"}" \
+            | jq -er .id)
+          for f in hyperb-android.apk hyperb-android.apk.sha256; do
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$f" \
+              "https://uploads.github.com/repos/$REPO/releases/$release_id/assets?name=$f"
+          done
