@@ -26,10 +26,10 @@ jobs:
           java-version: "17"
 
       - name: Install Android SDK and NDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install NDK
-        run: sdkmanager --install "ndk;$NDK_VERSION" "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "ndk;$NDK_VERSION" "platforms;android-35" "build-tools;35.0.0"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
