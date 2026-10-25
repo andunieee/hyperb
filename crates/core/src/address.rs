@@ -20,9 +20,9 @@ pub fn normalize(input: &str) -> Result<Url, String> {
         None => (None, input),
     };
     let forced = match scheme.as_deref() {
-        None | Some("hyperb") => None,
-        Some("http") | Some("hyperb+http") => Some("http"),
-        Some("https") | Some("hyperb+https") => Some("https"),
+        None | Some("hyperb") | Some("web+hyperb") => None,
+        Some("http") | Some("hyperb+http") | Some("web+hyperb+http") => Some("http"),
+        Some("https") | Some("hyperb+https") | Some("web+hyperb+https") => Some("https"),
         Some(other) => return Err(format!("unsupported scheme '{other}'")),
     };
 
@@ -43,7 +43,11 @@ pub fn normalize(input: &str) -> Result<Url, String> {
             if forced.is_some() {
                 return Err("an iroh address cannot use http or https".into());
             }
-            if rest.split(['/', '?', '#']).next().is_some_and(|a| a.contains(':')) {
+            if rest
+                .split(['/', '?', '#'])
+                .next()
+                .is_some_and(|a| a.contains(':'))
+            {
                 return Err("an iroh address has no port".into());
             }
             let mut out = format!("iroh://{}{}", d.to_ascii_lowercase(), url.path());
@@ -53,7 +57,11 @@ pub fn normalize(input: &str) -> Result<Url, String> {
             return parse(&out);
         }
     }
-    let scheme = forced.unwrap_or(if is_plain_host(&host) { "http" } else { "https" });
+    let scheme = forced.unwrap_or(if is_plain_host(&host) {
+        "http"
+    } else {
+        "https"
+    });
     parse(&format!("{scheme}://{rest}"))
 }
 
@@ -226,7 +234,13 @@ mod tests {
         assert_eq!(n("http://example.com/a"), "http://example.com/a");
         assert_eq!(n("https://example.com"), "https://example.com/");
         assert_eq!(n("hyperb+http://example.com"), "http://example.com/");
-        assert_eq!(n("hyperb+https://localhost:9001"), "https://localhost:9001/");
+        assert_eq!(
+            n("hyperb+https://localhost:9001"),
+            "https://localhost:9001/"
+        );
+        // Browsers deliver custom handlers as `web+<scheme>`.
+        assert_eq!(n("web+hyperb://example.com/a"), "https://example.com/a");
+        assert_eq!(n("web+hyperb://localhost:9001"), "http://localhost:9001/");
         assert!(normalize("ws://example.com").is_err());
         assert!(normalize("ftp://example.com").is_err());
         assert!(normalize("  ").is_err());
@@ -235,14 +249,20 @@ mod tests {
     #[test]
     fn default_scheme_depends_on_host() {
         for (input, want) in [
-            ("localhost:9001/restaurant", "http://localhost:9001/restaurant"),
+            (
+                "localhost:9001/restaurant",
+                "http://localhost:9001/restaurant",
+            ),
             ("hyperb://localhost:9001", "http://localhost:9001/"),
             ("hyperb://127.0.0.1:9001", "http://127.0.0.1:9001/"),
             ("hyperb://192.168.1.20/psu", "http://192.168.1.20/psu"),
             ("hyperb://8.8.8.8", "http://8.8.8.8/"),
             ("hyperb://[::1]:8080", "http://[::1]:8080/"),
             ("hyperb://abc.onion/x", "http://abc.onion/x"),
-            ("hyperb://hypereffect.dev/demo", "https://hypereffect.dev/demo"),
+            (
+                "hyperb://hypereffect.dev/demo",
+                "https://hypereffect.dev/demo",
+            ),
             ("hypereffect.dev/demo", "https://hypereffect.dev/demo"),
             ("hyperb://printer.local", "https://printer.local/"),
         ] {
@@ -254,12 +274,18 @@ mod tests {
     fn iroh() {
         let id = ID.to_ascii_lowercase();
         assert_eq!(n(&format!("hyperb://{ID}")), format!("iroh://{id}/"));
-        assert_eq!(n(&format!("hyperb://{id}/a/b?x=1")), format!("iroh://{id}/a/b?x=1"));
+        assert_eq!(
+            n(&format!("hyperb://{id}/a/b?x=1")),
+            format!("iroh://{id}/a/b?x=1")
+        );
         assert_eq!(n(&id), format!("iroh://{id}/"));
         assert!(normalize(&format!("hyperb+https://{id}")).is_err());
         assert!(normalize(&format!("hyperb://{id}:80")).is_err());
         // 63 hex chars is a valid hostname.
-        assert_eq!(n(&format!("hyperb://{}", &id[1..])), format!("https://{}/", &id[1..]));
+        assert_eq!(
+            n(&format!("hyperb://{}", &id[1..])),
+            format!("https://{}/", &id[1..])
+        );
     }
 
     #[test]
@@ -267,7 +293,10 @@ mod tests {
         assert_eq!(n("hyperb:///opt/apps/a.wasm"), "wasm:///opt/apps/a.wasm");
         assert_eq!(n("/opt/apps/a.wasm#/menu"), "wasm:///opt/apps/a.wasm#/menu");
         let url = normalize("hyperb:///opt/my apps/a.wasm#/x").unwrap();
-        assert_eq!(wasm_path(&url).unwrap().to_str(), Some("/opt/my apps/a.wasm"));
+        assert_eq!(
+            wasm_path(&url).unwrap().to_str(),
+            Some("/opt/my apps/a.wasm")
+        );
         assert_eq!(url.fragment(), Some("/x"));
         assert!(normalize("hyperb:///opt/apps/").is_err());
         assert!(normalize("hyperb+http:///opt/a.wasm").is_err());
@@ -308,7 +337,9 @@ mod tests {
     #[test]
     fn security() {
         assert!(!is_secure(&normalize("example.com/a.wasm").unwrap()));
-        assert!(!is_secure(&normalize("hyperb+http://localhost/a.wasm").unwrap()));
+        assert!(!is_secure(
+            &normalize("hyperb+http://localhost/a.wasm").unwrap()
+        ));
         assert!(is_secure(&normalize("example.com").unwrap()));
         assert!(is_secure(&normalize(ID).unwrap()));
         assert!(!is_secure(&normalize("localhost").unwrap()));

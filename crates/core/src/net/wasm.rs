@@ -44,6 +44,9 @@ pub(super) async fn run(
 }
 
 async fn load(url: &Url) -> Result<Vec<u8>, String> {
+    if let Some(bytes) = crate::cache::get(url).await {
+        return Ok(bytes);
+    }
     if let Some(path) = crate::address::wasm_path(url) {
         return std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()));
     }
@@ -58,6 +61,7 @@ async fn load(url: &Url) -> Result<Vec<u8>, String> {
     if bytes.len() > MAX_MODULE {
         return Err("the wasm app is too large".into());
     }
+    crate::cache::put(url, &bytes).await;
     Ok(bytes.to_vec())
 }
 
@@ -146,7 +150,8 @@ mod tests {
             (call $send (local.get $p) (local.get $n))))"#;
 
     fn open(name: &str, wat: &str) -> Connection {
-        let path = std::env::temp_dir().join(format!("hyperb-test-{}-{name}.wasm", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("hyperb-test-{}-{name}.wasm", std::process::id()));
         std::fs::write(&path, wat).unwrap();
         let url = address::normalize(&format!("hyperb://{}", path.display())).unwrap();
         Connection::open(&url, &Identity::generate())
@@ -159,8 +164,14 @@ mod tests {
         assert_eq!(events.recv_blocking().unwrap(), Event::Open);
         conn.send("hello {\"a\":1}\n".into());
         conn.send("action {}\n".into());
-        assert_eq!(events.recv_blocking().unwrap(), Event::Data("hello {\"a\":1}\n".into()));
-        assert_eq!(events.recv_blocking().unwrap(), Event::Data("action {}\n".into()));
+        assert_eq!(
+            events.recv_blocking().unwrap(),
+            Event::Data("hello {\"a\":1}\n".into())
+        );
+        assert_eq!(
+            events.recv_blocking().unwrap(),
+            Event::Data("action {}\n".into())
+        );
     }
 
     #[test]
@@ -169,11 +180,17 @@ mod tests {
         let events = conn.events();
         assert_eq!(events.recv_blocking().unwrap(), Event::Open);
         conn.send("hello {}\n".into());
-        assert!(matches!(events.recv_blocking().unwrap(), Event::Closed(Some(_))));
+        assert!(matches!(
+            events.recv_blocking().unwrap(),
+            Event::Closed(Some(_))
+        ));
         let missing = Connection::open(
             &address::normalize("hyperb:///nonexistent/app.wasm").unwrap(),
             &Identity::generate(),
         );
-        assert!(matches!(missing.events().recv_blocking().unwrap(), Event::Closed(Some(_))));
+        assert!(matches!(
+            missing.events().recv_blocking().unwrap(),
+            Event::Closed(Some(_))
+        ));
     }
 }

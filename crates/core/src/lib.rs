@@ -10,8 +10,11 @@
 //! - [`hypereffect`] is re-exported; its `client::Client` is the renderer core.
 
 pub mod address;
+#[cfg(feature = "net")]
+pub mod cache;
 pub mod http;
 pub mod identity;
+pub mod library;
 #[cfg(feature = "net")]
 pub mod net;
 pub mod sse;

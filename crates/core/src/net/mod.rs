@@ -14,8 +14,10 @@
 mod http;
 #[cfg(feature = "iroh")]
 mod iroh;
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", not(target_arch = "wasm32")))]
 mod wasm;
+#[cfg(all(target_arch = "wasm32", not(feature = "wasm")))]
+mod wasm_web;
 
 use crate::address::{self, Kind};
 use crate::identity::Identity;
@@ -54,6 +56,12 @@ impl Connection {
                     Kind::Iroh => iroh::run(url, identity, out_rx, &ev_tx).await,
                     #[cfg(feature = "wasm")]
                     Kind::LocalWasm | Kind::RemoteWasm => wasm::run(url, out_rx, &ev_tx).await,
+                    #[cfg(all(target_arch = "wasm32", not(feature = "wasm")))]
+                    Kind::RemoteWasm => wasm_web::run(url, out_rx, &ev_tx).await,
+                    #[cfg(all(target_arch = "wasm32", not(feature = "wasm")))]
+                    Kind::LocalWasm => {
+                        Err("local wasm apps are not available in the browser".into())
+                    }
                     #[allow(unreachable_patterns)]
                     k => Err(format!("{k:?} sessions are not available in this build")),
                 }

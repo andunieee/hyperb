@@ -24,6 +24,7 @@ tower-service = "0.3"
 serde = { version = "1", features = ["derive"] }
 console_error_panic_hook = { version = "0.1", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["History", "Location", "PageTransitionEvent", "Storage", "UrlSearchParams", "Window"] }
 hex = { version = "0.4", optional = true }
 url = { version = "2", optional = true }
@@ -31,7 +32,7 @@ url = { version = "2", optional = true }
 [features]
 default = ["ssr"]
 ssr = ["dep:leptos_axum", "dep:axum", "dep:tokio", "leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr"]
-hydrate = ["leptos/hydrate", "hyperb-core/net", "dep:console_error_panic_hook", "dep:wasm-bindgen", "dep:web-sys", "dep:hex", "dep:url"]
+hydrate = ["leptos/hydrate", "hyperb-core/net", "dep:console_error_panic_hook", "dep:wasm-bindgen", "dep:js-sys", "dep:web-sys", "dep:hex", "dep:url"]
 
 [package.metadata.leptos]
 output-name = "hyperb-web"

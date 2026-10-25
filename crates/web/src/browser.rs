@@ -11,9 +11,11 @@
 
 use crate::render::Children;
 use hyperb_core::address;
+use hyperb_core::cache;
 use hyperb_core::hypereffect::client::Client;
 use hyperb_core::hypereffect::{Component, Map, Value};
 use hyperb_core::identity::Identity;
+use hyperb_core::library::Library;
 use hyperb_core::net::{Connection, Event};
 use leptos::ev;
 use leptos::logging::warn;
@@ -22,9 +24,55 @@ use leptos::task::spawn_local;
 use leptos_meta::Title;
 use std::collections::HashMap;
 use url::Url;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 const IDENTITY_KEY: &str = "hyperb.identity";
+const LIBRARY_KEY: &str = "hyperb.library";
+
+/// Registers `web+hyperb://` links with the browser: they open this page with
+/// `?url=<the whole link>`. Browsers only allow the `web+` prefix, hence the
+/// alias; [`hyperb_core::address::normalize`] accepts it.
+#[wasm_bindgen(inline_js = r#"
+export function hyperb_register_handler(template) {
+  try {
+    if (!navigator.registerProtocolHandler) return false;
+    navigator.registerProtocolHandler("web+hyperb", template);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+"#)]
+extern "C" {
+    #[wasm_bindgen(js_name = hyperb_register_handler)]
+    fn register_handler(template: &str) -> bool;
+}
+
+fn register_protocol_handler() {
+    if let Ok(origin) = window().location().origin() {
+        let _ = register_handler(&format!("{origin}/?url=%s"));
+    }
+}
+
+fn now_ms() -> u64 {
+    js_sys::Date::now() as u64
+}
+
+fn load_library() -> Library {
+    window()
+        .local_storage()
+        .ok()
+        .flatten()
+        .and_then(|s| s.get_item(LIBRARY_KEY).ok().flatten())
+        .map(|s| Library::from_json(&s))
+        .unwrap_or_default()
+}
+
+fn save_library(lib: &Library) {
+    if let Some(storage) = window().local_storage().ok().flatten() {
+        let _ = storage.set_item(LIBRARY_KEY, &lib.to_json());
+    }
+}
 
 #[derive(Clone, PartialEq)]
 pub enum State {
@@ -44,6 +92,8 @@ pub struct Ctx {
     generation: StoredValue<u64>,
     pub url: RwSignal<Option<Url>>,
     pub state: RwSignal<Option<State>>,
+    /// History and favorites, mirrored to `localStorage`.
+    library: RwSignal<Library>,
     /// Bumped whenever the client reports changes; read it to track the client.
     version: RwSignal<u64>,
     /// The selected tab of `tabs` elements without `bind`.
@@ -51,7 +101,7 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    fn new() -> Self {
+    fn new(library: RwSignal<Library>) -> Self {
         Ctx {
             client: StoredValue::new_local(Client::new()),
             conn: StoredValue::new_local(None),
@@ -59,6 +109,7 @@ impl Ctx {
             generation: StoredValue::new(0),
             url: RwSignal::new(None),
             state: RwSignal::new(None),
+            library,
             version: RwSignal::new(0),
             local_tabs: RwSignal::new(HashMap::new()),
         }
@@ -133,6 +184,7 @@ impl Ctx {
                     .try_update_value(|c| c.hello())
                     .unwrap_or_default();
                 self.send(hello);
+                self.remember();
                 self.state.set(Some(State::Open));
             }
             Event::Data(lines) => self.client.update_value(|c| c.receive(lines.as_bytes())),
@@ -171,6 +223,43 @@ impl Ctx {
         if changed {
             self.version.update(|v| *v += 1);
         }
+    }
+
+    /// Records the open session in the history.
+    fn remember(self) {
+        let Some(url) = self.url.get_untracked() else {
+            return;
+        };
+        let label = address::label(&url);
+        let now = now_ms();
+        self.library.update(|lib| {
+            lib.record(url.as_str(), &label, now);
+            save_library(lib);
+        });
+    }
+
+    /// Adds or removes the open session from the favorites, and keeps the
+    /// wasm cache in step: unfavoriting drops the cached module.
+    fn set_favorite(self, url: &Url, favorite: bool) {
+        let label = address::label(url);
+        let now = now_ms();
+        self.library.update(|lib| {
+            if favorite {
+                lib.favorite(url.as_str(), &label, now);
+            } else {
+                lib.unfavorite(url.as_str());
+            }
+            save_library(lib);
+        });
+        cache::set_favorites(self.library.with_untracked(Library::favorite_urls));
+        if !favorite {
+            let url = url.clone();
+            spawn_local(async move { cache::forget(&url).await });
+        }
+    }
+
+    fn is_favorite(self, url: &Url) -> bool {
+        self.library.with(|lib| lib.is_favorite(url.as_str()))
     }
 
     /// User input on element `id`: writes `value` to its bound signal, if
@@ -258,9 +347,13 @@ fn set_query_address(addr: &str) {
 
 #[component]
 pub fn Browser() -> impl IntoView {
-    let ctx = Ctx::new();
+    let library = RwSignal::new(load_library());
+    cache::set_favorites(library.with_untracked(Library::favorite_urls));
+    let ctx = Ctx::new(library);
+    register_protocol_handler();
     let address = RwSignal::new(String::new());
     let error = RwSignal::new(None::<String>);
+    let show_library = RwSignal::new(false);
     let go = move |input: String| match ctx.navigate(&input) {
         Ok(()) => {
             let url = ctx
@@ -274,6 +367,11 @@ pub fn Browser() -> impl IntoView {
         }
         Err(e) => error.set(Some(e)),
     };
+    let open = Callback::new(go);
+    let open_and_close = Callback::new(move |input: String| {
+        open.run(input);
+        show_library.set(false);
+    });
     if let Some(a) = query_address() {
         go(a);
     }
@@ -322,6 +420,10 @@ pub fn Browser() -> impl IntoView {
         Some(State::Closed(None)) => Some("Disconnected. The server closed the connection.".into()),
         _ => error.get(),
     };
+    let favorite = move || {
+        ctx.url
+            .with(|u| u.as_ref().is_some_and(|u| ctx.is_favorite(u)))
+    };
 
     view! {
         <Title text=title/>
@@ -358,6 +460,30 @@ pub fn Browser() -> impl IntoView {
                         on:input:target=move |ev| address.set(ev.target().value())
                     />
                 </div>
+                <button
+                    type="button"
+                    class="hb-icon-button"
+                    class:he-hidden=move || ctx.url.get().is_none()
+                    title=move || if favorite() { "Remove from favorites" } else { "Add to favorites" }
+                    aria-label="Favorite"
+                    on:click=move |_| {
+                        if let Some(url) = ctx.url.get_untracked() {
+                            let on = !ctx.is_favorite(&url);
+                            ctx.set_favorite(&url, on);
+                        }
+                    }
+                >
+                    {move || if favorite() { "★" } else { "☆" }}
+                </button>
+                <button
+                    type="button"
+                    class="hb-icon-button"
+                    title="History and favorites"
+                    aria-label="History and favorites"
+                    on:click=move |_| show_library.update(|open| *open = !*open)
+                >
+                    "☰"
+                </button>
             </form>
             <div class="hb-progress" class:he-hidden=move || state() != Some(State::Connecting)></div>
             <div class="hb-banner" class:he-hidden=move || banner().is_none() role="status">
@@ -370,6 +496,9 @@ pub fn Browser() -> impl IntoView {
                     "Reconnect"
                 </button>
             </div>
+            <Show when=move || show_library.get()>
+                <LibraryPanel ctx=ctx open=open_and_close/>
+            </Show>
             {move || {
                 if has_page.get() {
                     view! {
@@ -383,6 +512,115 @@ pub fn Browser() -> impl IntoView {
                 }
             }}
         </div>
+    }
+}
+
+/// The history and favorites, shown under the toolbar by the ☰ button.
+#[component]
+fn LibraryPanel(ctx: Ctx, open: Callback<String>) -> impl IntoView {
+    let clear_history = move |_| {
+        ctx.library.update(|lib| {
+            lib.history.clear();
+            save_library(lib);
+        });
+    };
+    view! {
+        <section class="hb-library">
+            <div class="hb-library-head">
+                <h2>"Favorites"</h2>
+            </div>
+            <ul class="hb-entries">
+                {move || {
+                    ctx.library
+                        .get()
+                        .favorites
+                        .is_empty()
+                        .then(|| view! { <li class="hb-empty">"Star an address to keep it here."</li> })
+                }}
+                {move || {
+                    ctx.library
+                        .get()
+                        .favorites
+                        .into_iter()
+                        .map(|entry| {
+                            let url = entry.url.clone();
+                            let remove = entry.url.clone();
+                            view! {
+                                <li class="hb-entry-row">
+                                    <button
+                                        class="hb-entry"
+                                        on:click=move |_| open.run(url.clone())
+                                    >
+                                        <span class="hb-entry-label">{entry.label}</span>
+                                        <span class="hb-entry-url">{entry.url}</span>
+                                    </button>
+                                    <button
+                                        class="hb-icon-button hb-entry-action"
+                                        title="Remove from favorites"
+                                        aria-label="Remove from favorites"
+                                        on:click=move |_| {
+                                            if let Ok(url) = Url::parse(&remove) {
+                                                ctx.set_favorite(&url, false);
+                                            }
+                                        }
+                                    >
+                                        "✕"
+                                    </button>
+                                </li>
+                            }
+                        })
+                        .collect_view()
+                }}
+            </ul>
+            <div class="hb-library-head">
+                <h2>"History"</h2>
+                <button class="hb-link" on:click=clear_history>"Clear"</button>
+            </div>
+            <ul class="hb-entries">
+                {move || {
+                    ctx.library
+                        .get()
+                        .history
+                        .is_empty()
+                        .then(|| view! { <li class="hb-empty">"Nothing opened yet."</li> })
+                }}
+                {move || {
+                    ctx.library
+                        .get()
+                        .history
+                        .into_iter()
+                        .map(|entry| {
+                            let url = entry.url.clone();
+                            let forget = entry.url.clone();
+                            view! {
+                                <li class="hb-entry-row">
+                                    <button
+                                        class="hb-entry"
+                                        on:click=move |_| open.run(url.clone())
+                                    >
+                                        <span class="hb-entry-label">{entry.label}</span>
+                                        <span class="hb-entry-url">{entry.url}</span>
+                                    </button>
+                                    <button
+                                        class="hb-icon-button hb-entry-action"
+                                        title="Remove from history"
+                                        aria-label="Remove from history"
+                                        on:click=move |_| {
+                                            ctx.library.update(|lib| {
+                                                lib.history.retain(|e| e.url != forget);
+                                                save_library(lib);
+                                            });
+                                        }
+                                    >
+                                        "✕"
+                                    </button>
+                                </li>
+                            }
+                        })
+                        .collect_view()
+                }}
+            </ul>
+        </section>
     }
 }
 
