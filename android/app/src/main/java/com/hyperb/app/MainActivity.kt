@@ -50,29 +50,49 @@ import androidx.compose.ui.unit.dp
 import kotlin.concurrent.thread
 
 class MainActivity : ComponentActivity() {
-    private val browser = Browser()
+    private lateinit var browser: Browser
+    private lateinit var lastAddress: LastAddress
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        lastAddress = LastAddress(applicationContext)
+        browser = Browser(lastAddress::save)
         browser.publicKey = try {
             RustBridge.init(applicationContext, filesDir.absolutePath)
         } catch (e: Throwable) {
             Log.e("hyperb", "Rust core failed to start", e)
             null
         }
-        intent?.dataString?.let(browser::navigate)
+        // A deep link wins; otherwise reopen what was on screen before the
+        // process died, or the last address that opened in an earlier run.
+        val initial = intent?.dataString
+            ?: savedInstanceState?.getString(STATE_ADDRESS)
+            ?: lastAddress.load()
+        initial?.let(browser::navigate)
         setContent { HyperbTheme { BrowserScreen(browser) } }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        browser.currentAddress()?.let {
+            outState.putString(STATE_ADDRESS, it)
+            lastAddress.saveNow(it)
+        }
     }
 
     override fun onDestroy() {
         browser.session?.cancel()
         super.onDestroy()
     }
+
+    private companion object {
+        const val STATE_ADDRESS = "hyperb.address"
+    }
 }
 
 /** The address bar and the current session. All state is read and written on the main thread. */
-class Browser : Host {
+class Browser(private val persistAddress: (String) -> Unit = {}) : Host {
     var publicKey: String? = null
     var address by mutableStateOf("")
     var snapshot by mutableStateOf<Snapshot?>(null)
@@ -85,6 +105,9 @@ class Browser : Host {
 
     override val connected get() = snapshot?.connected == true
 
+    /** The normalized address of the open session, if any. */
+    fun currentAddress(): String? = snapshot?.url
+
     fun navigate(input: String) {
         val s = try {
             Session(input)
@@ -95,8 +118,12 @@ class Browser : Host {
         session?.cancel()
         session = s
         error = null
-        snapshot = s.snapshot()
-        snapshot?.let { address = it.url }
+        val snap = s.snapshot()
+        snapshot = snap
+        snap?.let {
+            address = it.url
+            persistAddress(it.url)
+        }
         thread(name = "hyperb-session") {
             s.run { snap -> main.post { if (session === s) snapshot = snap } }
         }
