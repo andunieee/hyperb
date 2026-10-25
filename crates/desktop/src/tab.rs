@@ -68,7 +68,7 @@ enum State {
 
 impl Tab {
     pub fn new(identity: Identity, library: Rc<Store>) -> Rc<Tab> {
-        Rc::new_cyclic(|weak| {
+        Rc::new_cyclic(|weak: &std::rc::Weak<Tab>| {
             // Tab strip entry.
             let spinner = gtk::Spinner::new();
             spinner.set_visible(false);
@@ -350,8 +350,9 @@ impl Tab {
         let Some(url) = url else { return };
         let label = address::label(&url);
         let now = now_ms();
-        self.library
-            .update(|lib| lib.toggle_favorite(url.as_str(), &label, now));
+        self.library.update(|lib| {
+            lib.toggle_favorite(url.as_str(), &label, now);
+        });
         self.update_chrome();
     }
 
@@ -463,7 +464,9 @@ impl Tab {
             remove.connect_clicked(move |_| {
                 if let Some(t) = weak.upgrade() {
                     if favorite {
-                        t.library.update(|lib| lib.unfavorite(&address));
+                        t.library.update(|lib| {
+                            lib.unfavorite(&address);
+                        });
                     } else {
                         t.library
                             .update(|lib| lib.history.retain(|e| e.url != address));

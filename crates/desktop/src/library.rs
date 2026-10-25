@@ -4,6 +4,7 @@
 //! favorite apps is configured here too.
 
 use gtk::glib;
+use gtk4 as gtk;
 use hyperb_core::cache;
 use hyperb_core::library::Library;
 use std::cell::RefCell;
