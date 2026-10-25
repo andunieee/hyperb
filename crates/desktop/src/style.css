@@ -18,6 +18,44 @@
   padding: 48px;
 }
 
+/* history and favorites */
+.hb-library {
+  padding: 6px;
+}
+.hb-library-head {
+  font-size: 0.85em;
+  opacity: 0.7;
+  margin: 6px 6px 2px;
+}
+.hb-entry-row {
+  padding: 0;
+}
+.hb-entry {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: transparent;
+}
+.hb-entry:hover {
+  background: alpha(@accent_bg_color, 0.14);
+}
+.hb-entry-label {
+  font-weight: 600;
+}
+.hb-entry-url {
+  font-size: 0.82em;
+  opacity: 0.65;
+}
+.hb-entry-action {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+}
+.hb-empty {
+  padding: 4px 8px;
+  opacity: 0.6;
+  font-size: 0.9em;
+}
+
 .he-root {
   padding: 24px 28px 48px;
 }

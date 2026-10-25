@@ -6,6 +6,7 @@
 
 mod clamp;
 mod debug;
+mod library;
 mod render;
 mod tab;
 
@@ -13,6 +14,7 @@ use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use gtk4 as gtk;
 use hyperb_core::identity::Identity;
+use library::Store;
 use std::cell::RefCell;
 use std::rc::Rc;
 use tab::Tab;
@@ -20,23 +22,61 @@ use tab::Tab;
 const APP_ID: &str = "com.hyperb.app";
 
 fn main() -> glib::ExitCode {
-    let urls: Vec<String> = std::env::args().skip(1).collect();
+    // `web+hyperb` links arrive exactly as they were written.
+    let mut urls: Vec<String> = std::env::args().skip(1).collect();
+    urls.retain(|u| u != "%u");
     let identity = Identity::load_default().unwrap_or_else(|e| {
         eprintln!("hyperb: cannot load identity ({e}); using a temporary one");
         Identity::generate()
     });
+    let library = Store::load();
+    register_scheme_handler();
     let app = gtk::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_startup(|_| load_css());
-    app.connect_activate(move |app| Browser::open(app, &urls, &identity));
+    app.connect_activate(move |app| Browser::open(app, &urls, &identity, &library));
     app.set_accels_for_action("win.new-tab", &["<Ctrl>t"]);
     app.set_accels_for_action("win.close-tab", &["<Ctrl>w"]);
     app.set_accels_for_action("win.focus-url", &["<Ctrl>l", "F6"]);
     app.set_accels_for_action("win.reload", &["F5", "<Ctrl>r"]);
     // Addresses are ours, not GTK's.
     app.run_with_args::<&str>(&[])
+}
+
+/// Writes the desktop entry that makes `hyperb://` and `web+hyperb://` open
+/// this binary, then asks the desktop database to pick it up. Failure is not
+/// fatal: the app still runs, links just do not resolve.
+fn register_scheme_handler() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let dir = library::applications_dir();
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let entry = format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=hyperb\n\
+         Comment=Browse hypereffect servers\n\
+         Exec=\"{}\" %u\n\
+         Terminal=false\n\
+         Categories=Network;\n\
+         MimeType=x-scheme-handler/hyperb;x-scheme-handler/web+hyperb;\n",
+        exe.display()
+    );
+    let path = dir.join("hyperb.desktop");
+    let current = std::fs::read_to_string(&path).ok();
+    if current.as_deref() != Some(entry.as_str())
+        && std::fs::write(&path, &entry).is_err()
+    {
+        return;
+    }
+    let _ = std::process::Command::new("update-desktop-database")
+        .arg(&dir)
+        .status();
 }
 
 fn load_css() {
@@ -54,10 +94,11 @@ struct Browser {
     notebook: gtk::Notebook,
     tabs: RefCell<Vec<Rc<Tab>>>,
     identity: Identity,
+    library: Rc<Store>,
 }
 
 impl Browser {
-    fn open(app: &gtk::Application, urls: &[String], identity: &Identity) {
+    fn open(app: &gtk::Application, urls: &[String], identity: &Identity, library: &Rc<Store>) {
         let notebook = gtk::Notebook::new();
         notebook.set_scrollable(true);
         notebook.set_tab_pos(gtk::PositionType::Left);
@@ -79,6 +120,7 @@ impl Browser {
             notebook: notebook.clone(),
             tabs: RefCell::new(Vec::new()),
             identity: identity.clone(),
+            library: library.clone(),
         });
 
         {
@@ -130,7 +172,7 @@ impl Browser {
     }
 
     fn add_tab(self: &Rc<Self>, url: Option<&str>) {
-        let t = Tab::new(self.identity.clone());
+        let t = Tab::new(self.identity.clone(), self.library.clone());
         let i = self.notebook.append_page(&t.page, Some(&t.tab_label));
         self.notebook.set_tab_reorderable(&t.page, true);
         {

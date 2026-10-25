@@ -1,5 +1,6 @@
 package com.hyperb.app
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -7,21 +8,26 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -46,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.concurrent.thread
 
@@ -57,7 +64,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         lastAddress = LastAddress(applicationContext)
-        browser = Browser(lastAddress::save)
+        browser = Browser(lastAddress::save, LibraryStore(applicationContext))
         browser.publicKey = try {
             RustBridge.init(applicationContext, filesDir.absolutePath)
         } catch (e: Throwable) {
@@ -71,6 +78,16 @@ class MainActivity : ComponentActivity() {
             ?: lastAddress.load()
         initial?.let(browser::navigate)
         setContent { HyperbTheme { BrowserScreen(browser) } }
+    }
+
+    /**
+     * A `hyperb://` or `web+hyperb://` link while the app is already open: the
+     * activity is single-top, so the address arrives here instead of onCreate.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.dataString?.let(browser::navigate)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -91,10 +108,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** The address bar and the current session. All state is read and written on the main thread. */
-class Browser(private val persistAddress: (String) -> Unit = {}) : Host {
+/** The address bar, the library and the current session. All state is read and written on the main thread. */
+class Browser(
+    private val persistAddress: (String) -> Unit = {},
+    private val libraryStore: LibraryStore? = null,
+) : Host {
     var publicKey: String? = null
     var address by mutableStateOf("")
+    /** History and favorites, mirrored to shared preferences. */
+    var library by mutableStateOf(libraryStore?.load() ?: LibraryState())
+        private set
+    /** Whether the history/favorites panel is open. */
+    var libraryOpen by mutableStateOf(false)
     var snapshot by mutableStateOf<Snapshot?>(null)
         private set
     var error by mutableStateOf<String?>(null)
@@ -123,6 +148,7 @@ class Browser(private val persistAddress: (String) -> Unit = {}) : Host {
         snap?.let {
             address = it.url
             persistAddress(it.url)
+            updateLibrary(library.record(it.url, it.label, System.currentTimeMillis()))
         }
         thread(name = "hyperb-session") {
             s.run { snap -> main.post { if (session === s) snapshot = snap } }
@@ -130,6 +156,23 @@ class Browser(private val persistAddress: (String) -> Unit = {}) : Host {
     }
 
     fun reload() = navigate(snapshot?.url ?: address)
+
+    /** Stars or unstars the open address. */
+    fun toggleFavorite() {
+        val snap = snapshot ?: return
+        updateLibrary(library.toggleFavorite(snap.url, snap.label, System.currentTimeMillis()))
+    }
+
+    fun removeFavorite(url: String) = updateLibrary(library.unfavorite(url))
+
+    fun removeFromHistory(url: String) = updateLibrary(library.removeFromHistory(url))
+
+    fun clearHistory() = updateLibrary(library.clearHistory())
+
+    private fun updateLibrary(next: LibraryState) {
+        library = next
+        libraryStore?.save(next)
+    }
 
     override fun input(id: String, value: String?, event: String?) {
         val s = session ?: return
@@ -156,6 +199,7 @@ fun BrowserScreen(b: Browser) {
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.safeDrawingPadding().imePadding()) {
             Toolbar(b)
+            if (b.libraryOpen) LibraryPanel(b)
             val snap = b.snapshot
             if (snap?.state == "connecting") LinearProgressIndicator(Modifier.fillMaxWidth())
             b.error?.let { Banner(it, null) }
@@ -188,9 +232,111 @@ private fun Toolbar(b: Browser) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
             keyboardActions = KeyboardActions(onGo = { b.navigate(b.address) }),
         )
+        IconButton(onClick = b::toggleFavorite, enabled = snap != null) {
+            Text(
+                if (snap != null && b.library.isFavorite(snap.url)) "★" else "☆",
+                style = MaterialTheme.typography.titleLarge,
+                color = if (snap != null && b.library.isFavorite(snap.url)) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        IconButton(onClick = { b.libraryOpen = !b.libraryOpen }) {
+            Text("☰", style = MaterialTheme.typography.titleLarge)
+        }
         IconButton(onClick = b::reload, enabled = snap != null || b.address.isNotBlank()) {
             Icon(Icons.Default.Refresh, "Reconnect")
         }
+    }
+}
+
+/** The history and favorites, under the toolbar. */
+@Composable
+private fun LibraryPanel(b: Browser) {
+    val library = b.library
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(max = 300.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        Text("FAVORITES", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (library.favorites.isEmpty()) {
+            Text(
+                "Star an address to keep it here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+        }
+        library.favorites.forEach { entry ->
+            LibraryRow(
+                entry = entry,
+                onOpen = {
+                    b.navigate(entry.url)
+                    b.libraryOpen = false
+                },
+                onRemove = { b.removeFavorite(entry.url) },
+            )
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "HISTORY",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = b::clearHistory) { Text("Clear") }
+        }
+        if (library.history.isEmpty()) {
+            Text(
+                "Nothing opened yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+        }
+        library.history.forEach { entry ->
+            LibraryRow(
+                entry = entry,
+                onOpen = {
+                    b.navigate(entry.url)
+                    b.libraryOpen = false
+                },
+                onRemove = { b.removeFromHistory(entry.url) },
+            )
+        }
+    }
+    HorizontalDivider()
+}
+
+@Composable
+private fun LibraryRow(entry: LibraryEntry, onOpen: () -> Unit, onRemove: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            Modifier
+                .weight(1f)
+                .clickable(onClick = onOpen)
+                .padding(vertical = 6.dp),
+        ) {
+            Text(
+                entry.label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                entry.url,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = onRemove) { Text("✕") }
     }
 }
 

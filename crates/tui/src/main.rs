@@ -1,18 +1,20 @@
 //! hyperb in the terminal: a browser for hypereffect servers.
 //!
 //! ```text
-//! hyperb-tui [address]
+//! hyperb-tui <address>
 //! ```
 //!
-//! Terminal input and network events arrive on one channel,
-//! so the loop sleeps until something happens, an onChange is due, or an
-//! animation needs its next frame.
+//! The address is required and fixed for the life of the process: there is no
+//! address bar, no history, and no favorites. Terminal input and network events
+//! arrive on one channel, so the loop sleeps until something happens, an
+//! onChange is due, or an animation needs its next frame.
 
 mod browser;
 mod edit;
 mod page;
 
 use browser::Browser;
+use hyperb_core::address;
 use hyperb_core::identity::Identity;
 use hyperb_core::net;
 use ratatui::crossterm::event::{
@@ -27,6 +29,7 @@ use ratatui::{DefaultTerminal, Frame};
 use std::io::{self, stdout};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
+use url::Url;
 
 pub enum Msg {
     Term(Event),
@@ -36,8 +39,20 @@ pub enum Msg {
 const FRAME: Duration = Duration::from_millis(80);
 const IDLE: Duration = Duration::from_secs(60);
 
+const USAGE: &str = "usage: hyperb-tui <address>";
+
 fn main() -> io::Result<()> {
-    let url = std::env::args().nth(1);
+    let Some(input) = std::env::args().nth(1) else {
+        eprintln!("hyperb-tui: missing address\n{USAGE}");
+        std::process::exit(2);
+    };
+    let url = match address::normalize(&input) {
+        Ok(url) => url,
+        Err(e) => {
+            eprintln!("hyperb-tui: {e}\n{USAGE}");
+            std::process::exit(2);
+        }
+    };
     let identity = Identity::load_default().unwrap_or_else(|e| {
         eprintln!("hyperb: cannot load identity ({e}); using a temporary one");
         Identity::generate()
@@ -49,13 +64,13 @@ fn main() -> io::Result<()> {
         let _ = execute!(stdout(), DisableMouseCapture, DisableBracketedPaste);
         hook(info);
     }));
-    let result = run(&mut terminal, url.as_deref(), identity);
+    let result = run(&mut terminal, url, identity);
     let _ = execute!(stdout(), DisableMouseCapture, DisableBracketedPaste);
     ratatui::restore();
     result
 }
 
-fn run(terminal: &mut DefaultTerminal, url: Option<&str>, identity: Identity) -> io::Result<()> {
+fn run(terminal: &mut DefaultTerminal, url: Url, identity: Identity) -> io::Result<()> {
     let (tx, rx) = mpsc::channel();
     {
         let tx = tx.clone();
@@ -98,11 +113,9 @@ struct App {
 }
 
 impl App {
-    fn new(tx: Sender<Msg>, url: Option<&str>, identity: Identity) -> App {
+    fn new(tx: Sender<Msg>, url: Url, identity: Identity) -> App {
         let mut browser = Browser::new(tx, identity);
-        if let Some(u) = url {
-            browser.navigate(u);
-        }
+        browser.open(url);
         App {
             browser,
             quit: false,
@@ -140,8 +153,6 @@ impl App {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         match k.code {
             KeyCode::Char('q' | 'c') if ctrl => self.quit = true,
-            KeyCode::Char('l') if ctrl => self.browser.focus_url(),
-            KeyCode::F(6) => self.browser.focus_url(),
             KeyCode::Char('r') if ctrl => self.browser.reload(),
             KeyCode::F(5) => self.browser.reload(),
             _ => self.browser.key(k),
@@ -158,11 +169,7 @@ impl App {
             f.set_cursor_position(c);
         }
         let status = Rect::new(area.x, area.bottom() - 1, area.width, 1);
-        let hints = if self.browser.url_focused {
-            "Enter connect · Esc back · Ctrl+Q quit"
-        } else {
-            "Tab/↑↓ move · Enter/Space activate · Esc back · Ctrl+L address · F5 reconnect · Ctrl+Q quit"
-        };
+        let hints = "Tab/↑↓ move · Enter/Space activate · Esc back · F5 reconnect · Ctrl+Q quit";
         f.buffer_mut().set_stringn(
             status.x + 1,
             status.y,

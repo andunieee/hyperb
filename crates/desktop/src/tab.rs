@@ -8,6 +8,7 @@
 
 use crate::clamp::Clamp;
 use crate::debug::{Debugger, Dir};
+use crate::library::Store;
 use crate::render::Renderer;
 use gtk::prelude::*;
 use gtk::{gdk, glib, pango};
@@ -16,9 +17,11 @@ use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
 use hyperb_core::hypereffect::{json, Value};
 use hyperb_core::identity::Identity;
+use hyperb_core::library::Entry;
 use hyperb_core::net::{Connection, Event};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use url::Url;
 
 /// The widest the rendered page gets; the rest of the window is margin.
@@ -33,6 +36,7 @@ pub struct Tab {
     pub close_button: gtk::Button,
     spinner: gtk::Spinner,
     url_entry: gtk::Entry,
+    favorite_button: gtk::Button,
     banner: gtk::Box,
     banner_text: gtk::Label,
     content: gtk::Stack,
@@ -40,6 +44,8 @@ pub struct Tab {
     session: RefCell<Session>,
     renderer: RefCell<Renderer>,
     quiet: Cell<bool>,
+    /// History, favorites and the wasm cache, shared by every tab.
+    library: Rc<Store>,
     identity: Identity,
 }
 
@@ -61,7 +67,7 @@ enum State {
 }
 
 impl Tab {
-    pub fn new(identity: Identity) -> Rc<Tab> {
+    pub fn new(identity: Identity, library: Rc<Store>) -> Rc<Tab> {
         Rc::new_cyclic(|weak| {
             // Tab strip entry.
             let spinner = gtk::Spinner::new();
@@ -93,6 +99,38 @@ impl Tab {
             toolbar.add_css_class("hb-toolbar");
             toolbar.append(&reload);
             toolbar.append(&url_entry);
+
+            // Favorite this address, and the history/favorites popover.
+            let favorite_button = gtk::Button::from_icon_name("non-starred-symbolic");
+            favorite_button.add_css_class("flat");
+            favorite_button.set_tooltip_text(Some("Favorite"));
+            favorite_button.set_sensitive(false);
+            toolbar.append(&favorite_button);
+
+            let library_button = gtk::MenuButton::new();
+            library_button.set_icon_name("document-open-recent-symbolic");
+            library_button.add_css_class("flat");
+            library_button.set_tooltip_text(Some("History and favorites"));
+            let library_popover = gtk::Popover::new();
+            library_popover.set_has_arrow(false);
+            library_button.set_popover(Some(&library_popover));
+            toolbar.append(&library_button);
+            {
+                let weak = weak.clone();
+                favorite_button.connect_clicked(move |_| {
+                    if let Some(t) = weak.upgrade() {
+                        t.toggle_favorite();
+                    }
+                });
+            }
+            {
+                let weak = weak.clone();
+                library_popover.connect_show(move |popover| {
+                    if let Some(t) = weak.upgrade() {
+                        popover.set_child(Some(&t.library_list(popover)));
+                    }
+                });
+            }
 
             // Disconnected banner.
             let banner_text = gtk::Label::new(None);
@@ -177,6 +215,7 @@ impl Tab {
                 close_button,
                 spinner,
                 url_entry,
+                favorite_button,
                 banner,
                 banner_text,
                 content,
@@ -190,6 +229,7 @@ impl Tab {
                 }),
                 renderer: RefCell::new(Renderer::new(weak.clone(), overlay, main)),
                 quiet: Cell::new(false),
+                library,
                 identity,
             }
         })
@@ -260,29 +300,181 @@ impl Tab {
     }
 
     fn handle(&self, ev: Event) {
-        let mut s = self.session.borrow_mut();
-        let s = &mut *s;
-        match ev {
-            Event::Open => {
-                let hello = s.client.hello();
-                if let Some(c) = &s.conn {
-                    self.debug.log(Dir::Sent, &hello);
-                    c.send(hello);
+        let opened = {
+            let mut s = self.session.borrow_mut();
+            let s = &mut *s;
+            match ev {
+                Event::Open => {
+                    let hello = s.client.hello();
+                    if let Some(c) = &s.conn {
+                        self.debug.log(Dir::Sent, &hello);
+                        c.send(hello);
+                    }
+                    s.state = State::Open;
+                    true
                 }
-                s.state = State::Open;
-            }
-            Event::Data(lines) => {
-                for l in lines.lines() {
-                    self.debug.log(Dir::Received, l);
+                Event::Data(lines) => {
+                    for l in lines.lines() {
+                        self.debug.log(Dir::Received, l);
+                    }
+                    s.client.receive(lines.as_bytes());
+                    false
                 }
-                s.client.receive(lines.as_bytes())
+                Event::Closed(reason) => {
+                    s.client.close();
+                    s.conn = None;
+                    s.state = State::Closed(reason);
+                    false
+                }
             }
-            Event::Closed(reason) => {
-                s.client.close();
-                s.conn = None;
-                s.state = State::Closed(reason);
-            }
+        };
+        if opened {
+            self.record_visit();
         }
+    }
+
+    /// Adds the open address to the history.
+    fn record_visit(&self) {
+        let url = self.session.borrow().url.clone();
+        let Some(url) = url else { return };
+        let label = address::label(&url);
+        let now = now_ms();
+        self.library
+            .update(|lib| lib.record(url.as_str(), &label, now));
+    }
+
+    /// Stars or unstars the open address. Unstarring forgets its cached wasm
+    /// module.
+    fn toggle_favorite(self: &Rc<Self>) {
+        let url = self.session.borrow().url.clone();
+        let Some(url) = url else { return };
+        let label = address::label(&url);
+        let now = now_ms();
+        self.library
+            .update(|lib| lib.toggle_favorite(url.as_str(), &label, now));
+        self.update_chrome();
+    }
+
+    /// The contents of the history/favorites popover, rebuilt each time it is
+    /// opened.
+    fn library_list(self: &Rc<Self>, popover: &gtk::Popover) -> gtk::Widget {
+        let (favorites, history) = self
+            .library
+            .with(|lib| (lib.favorites.clone(), lib.history.clone()));
+
+        let list = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        list.add_css_class("hb-library");
+        list.append(&heading("Favorites"));
+        if favorites.is_empty() {
+            list.append(&empty("Star an address to keep it here."));
+        }
+        for entry in &favorites {
+            list.append(&self.entry_row(entry, true, popover));
+        }
+
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        row.append(&heading("History"));
+        let clear = gtk::Button::with_label("Clear");
+        clear.add_css_class("flat");
+        clear.set_halign(gtk::Align::End);
+        clear.set_hexpand(true);
+        {
+            let weak = Rc::downgrade(self);
+            let popover = popover.clone();
+            clear.connect_clicked(move |_| {
+                if let Some(t) = weak.upgrade() {
+                    t.library.update(|lib| lib.history.clear());
+                }
+                popover.popdown();
+            });
+        }
+        row.append(&clear);
+        list.append(&row);
+        if history.is_empty() {
+            list.append(&empty("Nothing opened yet."));
+        }
+        for entry in &history {
+            list.append(&self.entry_row(entry, false, popover));
+        }
+
+        let scrolled = gtk::ScrolledWindow::new();
+        scrolled.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+        scrolled.set_min_content_height(320);
+        scrolled.set_child(Some(&list));
+        scrolled.upcast()
+    }
+
+    /// One history or favorites row: open the address, or forget the entry.
+    fn entry_row(
+        self: &Rc<Self>,
+        entry: &Entry,
+        favorite: bool,
+        popover: &gtk::Popover,
+    ) -> gtk::Widget {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+        row.add_css_class("hb-entry-row");
+
+        let open = gtk::Button::new();
+        open.add_css_class("hb-entry");
+        open.set_hexpand(true);
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
+        let label = gtk::Label::new(Some(&entry.label));
+        label.set_xalign(0.0);
+        label.set_ellipsize(pango::EllipsizeMode::End);
+        label.add_css_class("hb-entry-label");
+        let address_label = gtk::Label::new(Some(&entry.url));
+        address_label.set_xalign(0.0);
+        address_label.set_ellipsize(pango::EllipsizeMode::Middle);
+        address_label.add_css_class("hb-entry-url");
+        text.append(&label);
+        text.append(&address_label);
+        open.set_child(Some(&text));
+        let tooltip = if entry.visits > 0 {
+            format!("{} · opened {} times", entry.url, entry.visits)
+        } else {
+            entry.url.clone()
+        };
+        open.set_tooltip_text(Some(&tooltip));
+        {
+            let weak = Rc::downgrade(self);
+            let popover = popover.clone();
+            let address = entry.url.clone();
+            open.connect_clicked(move |_| {
+                if let Some(t) = weak.upgrade() {
+                    t.navigate(&address);
+                }
+                popover.popdown();
+            });
+        }
+        row.append(&open);
+
+        let remove = gtk::Button::from_icon_name("window-close-symbolic");
+        remove.add_css_class("flat");
+        remove.add_css_class("hb-entry-action");
+        remove.set_tooltip_text(Some(if favorite {
+            "Remove from favorites and delete its cached copy"
+        } else {
+            "Remove from history"
+        }));
+        {
+            let weak = Rc::downgrade(self);
+            let popover = popover.clone();
+            let address = entry.url.clone();
+            remove.connect_clicked(move |_| {
+                if let Some(t) = weak.upgrade() {
+                    if favorite {
+                        t.library.update(|lib| lib.unfavorite(&address));
+                    } else {
+                        t.library
+                            .update(|lib| lib.history.retain(|e| e.url != address));
+                    }
+                    t.update_chrome();
+                }
+                popover.popdown();
+            });
+        }
+        row.append(&remove);
+        row.upcast()
     }
 
     pub fn is_quiet(&self) -> bool {
@@ -378,6 +570,21 @@ impl Tab {
                 State::Closed(_) => Some("Disconnected"),
                 _ => None,
             });
+        let favorite = s
+            .url
+            .as_ref()
+            .is_some_and(|u| self.library.with(|lib| lib.is_favorite(u.as_str())));
+        self.favorite_button.set_sensitive(s.url.is_some());
+        self.favorite_button.set_icon_name(if favorite {
+            "starred-symbolic"
+        } else {
+            "non-starred-symbolic"
+        });
+        self.favorite_button.set_tooltip_text(Some(if favorite {
+            "Remove from favorites"
+        } else {
+            "Favorite (caches its wasm app)"
+        }));
         match &s.state {
             State::Closed(reason) => {
                 let text = match reason {
@@ -390,6 +597,29 @@ impl Tab {
             _ => self.banner.set_visible(false),
         }
     }
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn heading(text: &str) -> gtk::Label {
+    let label = gtk::Label::new(None);
+    label.set_markup(&format!("<b>{text}</b>"));
+    label.set_xalign(0.0);
+    label.add_css_class("hb-library-head");
+    label
+}
+
+fn empty(text: &str) -> gtk::Label {
+    let label = gtk::Label::new(Some(text));
+    label.set_xalign(0.0);
+    label.set_wrap(true);
+    label.add_css_class("hb-empty");
+    label
 }
 
 fn welcome() -> gtk::Widget {
