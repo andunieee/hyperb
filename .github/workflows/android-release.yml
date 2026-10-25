@@ -27,9 +27,17 @@ jobs:
 
       - name: Install Android SDK and NDK
         run: |
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export PATH="$sdk/cmdline-tools/latest/bin:$PATH"
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager --install "ndk;$NDK_VERSION" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Locate NDK
+        run: |
+          ndk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/ndk/$NDK_VERSION"
+          test -d "$ndk" || ndk="$ANDROID_NDK_ROOT"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ndk" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -44,8 +52,6 @@ jobs:
         run: cargo install cargo-ndk --locked
 
       - name: Build Rust JNI library
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
         run: |
           cargo ndk \
             -t arm64-v8a -t armeabi-v7a -t x86_64 \
