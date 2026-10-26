@@ -49,9 +49,17 @@ extern "C" {
 }
 
 fn register_protocol_handler() {
-    if let Ok(origin) = window().location().origin() {
-        let _ = register_handler(&format!("{origin}/?url=%s"));
-    }
+    let Ok(origin) = window().location().origin() else {
+        return;
+    };
+    let path = window()
+        .location()
+        .pathname()
+        .unwrap_or_else(|_| "/".into());
+    // The page may be served from a subdirectory: links must reopen this
+    // renderer, not the site root.
+    let dir = path.rfind('/').map(|i| &path[..=i]).unwrap_or("/");
+    let _ = register_handler(&format!("{origin}{dir}?url=%s"));
 }
 
 fn now_ms() -> u64 {
