@@ -3,6 +3,10 @@
 //! The server renders the page shell; once the wasm bundle hydrates it, the
 //! browser ([`browser`]) connects to hypereffect servers from the page itself.
 
+// The view tree is one deeply nested generic type; the default depth is too
+// small for the release build.
+#![recursion_limit = "256"]
+
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
 use leptos_router::{
