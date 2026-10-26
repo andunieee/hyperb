@@ -60,6 +60,9 @@ jobs:
           cp target/site/index.html target/site/404.html
           touch target/site/.nojekyll
           sed -i "s#\"/pkg/#\"${BASE_PATH}/pkg/#g" target/site/index.html target/site/404.html
+          # The loader is called with root "" because the app was served from
+          # "/"; on Pages it lives under BASE_PATH.
+          sed -i "s#^(\"\", \"pkg\", \"hyperb-web\", \"hyperb-web\");#(\"${BASE_PATH}\", \"pkg\", \"hyperb-web\", \"hyperb-web\");#" target/site/index.html target/site/404.html
           rm -f target/site/pkg/*.d.ts
 
       - name: List site contents
