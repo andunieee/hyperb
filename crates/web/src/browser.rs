@@ -2,20 +2,25 @@
 //! server, and the rendered session. Runs only in the browser (feature
 //! `hydrate`); the server renders a placeholder.
 //!
-//! Entering an address opens a connection (HTTP with SSE, over fetch); when it
-//! opens the page sends `hello` and from then on feeds every message to the
-//! [`Client`]. When the transport closes the last state stays on screen with
-//! controls disabled, and a banner offers to reconnect.
+//! Entering an address opens a connection (HTTP with SSE over fetch, or a
+//! remote wasm app run by the browser); when it opens the page sends `hello`
+//! and from then on feeds every message to the [`Client`]. When the transport
+//! closes the last state stays on screen with controls disabled, and a banner
+//! offers to reconnect.
 //!
-//! The identity is kept in `localStorage`. `?url=<address>` opens an address.
+//! The identity is kept in `localStorage`, and so are the history and the
+//! favorites ([`crate::store`]), which the welcome page and the toolbar's
+//! menu list. `?url=<address>` opens an address, and so does
+//! `?link=<address>`, which is where the page has the browser send
+//! `web+hyperb://` links once the user lets it handle them.
 
 use crate::render::Children;
+use crate::store;
 use hyperb_core::address;
-use hyperb_core::cache;
 use hyperb_core::hypereffect::client::Client;
 use hyperb_core::hypereffect::{Component, Map, Value};
 use hyperb_core::identity::Identity;
-use hyperb_core::library::Library;
+use hyperb_core::library::{Entry, Library};
 use hyperb_core::net::{Connection, Event};
 use leptos::ev;
 use leptos::logging::warn;
@@ -24,63 +29,9 @@ use leptos::task::spawn_local;
 use leptos_meta::Title;
 use std::collections::HashMap;
 use url::Url;
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 const IDENTITY_KEY: &str = "hyperb.identity";
-const LIBRARY_KEY: &str = "hyperb.library";
-
-/// Registers `web+hyperb://` links with the browser: they open this page with
-/// `?url=<the whole link>`. Browsers only allow the `web+` prefix, hence the
-/// alias; [`hyperb_core::address::normalize`] accepts it.
-#[wasm_bindgen(inline_js = r#"
-export function hyperb_register_handler(template) {
-  try {
-    if (!navigator.registerProtocolHandler) return false;
-    navigator.registerProtocolHandler("web+hyperb", template);
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-"#)]
-extern "C" {
-    #[wasm_bindgen(js_name = hyperb_register_handler)]
-    fn register_handler(template: &str) -> bool;
-}
-
-fn register_protocol_handler() {
-    let Ok(origin) = window().location().origin() else {
-        return;
-    };
-    let path = window()
-        .location()
-        .pathname()
-        .unwrap_or_else(|_| "/".into());
-    // The page may be served from a subdirectory: links must reopen this
-    // renderer, not the site root.
-    let dir = path.rfind('/').map(|i| &path[..=i]).unwrap_or("/");
-    let _ = register_handler(&format!("{origin}{dir}?url=%s"));
-}
-
-fn now_ms() -> u64 {
-    js_sys::Date::now() as u64
-}
-
-fn load_library() -> Library {
-    window()
-        .local_storage()
-        .ok()
-        .flatten()
-        .and_then(|s| s.get_item(LIBRARY_KEY).ok().flatten())
-        .map(|s| Library::from_json(&s))
-        .unwrap_or_default()
-}
-
-fn save_library(lib: &Library) {
-    if let Some(storage) = window().local_storage().ok().flatten() {
-        let _ = storage.set_item(LIBRARY_KEY, &lib.to_json());
-    }
-}
 
 #[derive(Clone, PartialEq)]
 pub enum State {
@@ -100,16 +51,16 @@ pub struct Ctx {
     generation: StoredValue<u64>,
     pub url: RwSignal<Option<Url>>,
     pub state: RwSignal<Option<State>>,
-    /// History and favorites, mirrored to `localStorage`.
-    library: RwSignal<Library>,
     /// Bumped whenever the client reports changes; read it to track the client.
     version: RwSignal<u64>,
     /// The selected tab of `tabs` elements without `bind`.
     pub local_tabs: RwSignal<HashMap<String, String>>,
+    /// History and favorites, as last stored.
+    library: RwSignal<Library>,
 }
 
 impl Ctx {
-    fn new(library: RwSignal<Library>) -> Self {
+    fn new() -> Self {
         Ctx {
             client: StoredValue::new_local(Client::new()),
             conn: StoredValue::new_local(None),
@@ -117,9 +68,9 @@ impl Ctx {
             generation: StoredValue::new(0),
             url: RwSignal::new(None),
             state: RwSignal::new(None),
-            library,
             version: RwSignal::new(0),
             local_tabs: RwSignal::new(HashMap::new()),
+            library: RwSignal::new(store::load()),
         }
     }
 
@@ -133,11 +84,38 @@ impl Ctx {
         self.with(Client::is_connected)
     }
 
-    /// Connects to what the user typed.
-    pub fn navigate(self, input: &str) -> Result<(), String> {
-        let url = address::normalize(input).map_err(|e| format!("Invalid address: {e}"))?;
+    /// Connects to what the user typed or picked, or to a link, which
+    /// cannot open local files.
+    pub fn navigate(self, input: &str, link: bool) -> Result<(), String> {
+        let url = if link {
+            address::from_link(input)
+        } else {
+            address::normalize(input)
+        };
+        let url = url.map_err(|e| format!("Invalid address: {e}"))?;
+        self.library
+            .set(store::update(|l, now| l.visit(&url, now)));
         self.connect(url);
         Ok(())
+    }
+
+    fn is_favorite(self) -> bool {
+        let url = self.url.get();
+        self.library
+            .with(|l| url.is_some_and(|u| l.is_favorite(&u)))
+    }
+
+    /// Adds `url` to the favorites or removes it. A new favorite wasm app
+    /// is downloaded to be kept; a module no favorite runs is deleted.
+    fn set_favorite(self, url: &Url, on: bool) {
+        let lib = store::update(|l, now| l.set_favorite(url, on, now));
+        if on && lib.keeps_module(url) {
+            store::download(url.clone());
+        }
+        if !on {
+            spawn_local(store::prune(lib.clone()));
+        }
+        self.library.set(lib);
     }
 
     /// Closes the connection when the page is hidden: a page kept in the
@@ -158,18 +136,35 @@ impl Ctx {
     }
 
     fn connect(self, url: Url) {
-        let conn = self.identity.with_value(|id| Connection::open(&url, id));
-        let events = conn.events();
         // Until the new transport opens, nothing may be sent: hello must come first.
         self.client.update_value(Client::close);
-        self.conn.set_value(Some(conn));
+        self.conn.set_value(None);
         self.generation.update_value(|g| *g += 1);
         let generation = self.generation.get_value();
         self.local_tabs.set(HashMap::new());
-        self.url.set(Some(url));
+        self.url.set(Some(url.clone()));
         self.state.set(Some(State::Connecting));
         self.refresh();
+        let keeps = self.library.with_untracked(|l| l.keeps_module(&url));
         spawn_local(async move {
+            // A favorite wasm app runs from its kept module, which is
+            // downloaded again for next time.
+            let module = match keeps {
+                true => store::module(&url).await,
+                false => None,
+            };
+            if self.generation.get_value() != generation {
+                return;
+            }
+            let conn = match module {
+                Some(m) => Connection::open_module(&url, m),
+                None => self.identity.with_value(|id| Connection::open(&url, id)),
+            };
+            if keeps {
+                store::download(url);
+            }
+            let events = conn.events();
+            self.conn.set_value(Some(conn));
             while let Ok(ev) = events.recv().await {
                 if self.generation.get_value() != generation {
                     break;
@@ -192,7 +187,6 @@ impl Ctx {
                     .try_update_value(|c| c.hello())
                     .unwrap_or_default();
                 self.send(hello);
-                self.remember();
                 self.state.set(Some(State::Open));
             }
             Event::Data(lines) => self.client.update_value(|c| c.receive(lines.as_bytes())),
@@ -231,43 +225,6 @@ impl Ctx {
         if changed {
             self.version.update(|v| *v += 1);
         }
-    }
-
-    /// Records the open session in the history.
-    fn remember(self) {
-        let Some(url) = self.url.get_untracked() else {
-            return;
-        };
-        let label = address::label(&url);
-        let now = now_ms();
-        self.library.update(|lib| {
-            lib.record(url.as_str(), &label, now);
-            save_library(lib);
-        });
-    }
-
-    /// Adds or removes the open session from the favorites, and keeps the
-    /// wasm cache in step: unfavoriting drops the cached module.
-    fn set_favorite(self, url: &Url, favorite: bool) {
-        let label = address::label(url);
-        let now = now_ms();
-        self.library.update(|lib| {
-            if favorite {
-                lib.favorite(url.as_str(), &label, now);
-            } else {
-                lib.unfavorite(url.as_str());
-            }
-            save_library(lib);
-        });
-        cache::set_favorites(self.library.with_untracked(Library::favorite_urls));
-        if !favorite {
-            let url = url.clone();
-            spawn_local(async move { cache::forget(&url).await });
-        }
-    }
-
-    fn is_favorite(self, url: &Url) -> bool {
-        self.library.with(|lib| lib.is_favorite(url.as_str()))
     }
 
     /// User input on element `id`: writes `value` to its bound signal, if
@@ -313,6 +270,25 @@ impl Ctx {
     }
 }
 
+/// Lets the browser send `web+hyperb://` links to this page, as
+/// `?link=<address>`. The browser asks the user first.
+fn register_links() -> Result<(), String> {
+    let loc = window().location();
+    let page = format!(
+        "{}{}?link=%s",
+        loc.origin().unwrap_or_default(),
+        loc.pathname().unwrap_or_default()
+    );
+    window()
+        .navigator()
+        .register_protocol_handler("web+hyperb", &page, "hyperb")
+        .map_err(|e| {
+            e.dyn_ref::<js_sys::Error>()
+                .map(|e| String::from(e.message()))
+                .unwrap_or_else(|| "the browser refused".into())
+        })
+}
+
 /// The identity kept in `localStorage`, created on first use. Without
 /// storage (a private window, say) a temporary one is used.
 fn load_identity() -> Identity {
@@ -332,12 +308,11 @@ fn load_identity() -> Identity {
     id
 }
 
-/// The address in `?url=`, if any.
+/// The address in `?url=` or `?link=`, if any.
 fn query_address() -> Option<String> {
     let search = window().location().search().ok()?;
-    web_sys::UrlSearchParams::new_with_str(&search)
-        .ok()?
-        .get("url")
+    let params = web_sys::UrlSearchParams::new_with_str(&search).ok()?;
+    params.get("url").or_else(|| params.get("link"))
 }
 
 /// Puts the address in `?url=` so reloading the page reconnects.
@@ -355,14 +330,12 @@ fn set_query_address(addr: &str) {
 
 #[component]
 pub fn Browser() -> impl IntoView {
-    let library = RwSignal::new(load_library());
-    cache::set_favorites(library.with_untracked(Library::favorite_urls));
-    let ctx = Ctx::new(library);
-    register_protocol_handler();
+    let ctx = Ctx::new();
     let address = RwSignal::new(String::new());
     let error = RwSignal::new(None::<String>);
-    let show_library = RwSignal::new(false);
-    let go = move |input: String| match ctx.navigate(&input) {
+    // Addresses in the page's own URL may come from any other page, so they
+    // are links; addresses the user types or picks are not.
+    let go = move |input: String, link: bool| match ctx.navigate(&input, link) {
         Ok(()) => {
             let addr = ctx
                 .url
@@ -375,19 +348,18 @@ pub fn Browser() -> impl IntoView {
         }
         Err(e) => error.set(Some(e)),
     };
-    let open = Callback::new(go);
-    let open_and_close = Callback::new(move |input: String| {
-        open.run(input);
-        show_library.set(false);
-    });
     if let Some(a) = query_address() {
-        go(a);
+        go(a, true);
     }
+    let open = Callback::new(move |a: String| go(a, false));
+    let menu = RwSignal::new(false);
     window_event_listener(ev::keydown, move |e| {
         if e.key() == "Escape" {
             ctx.dismiss_dialog();
         }
     });
+    // Another tab changed the history or favorites.
+    window_event_listener_untyped("storage", move |_| ctx.library.set(store::load()));
     window_event_listener_untyped("pagehide", move |_| ctx.suspend());
     window_event_listener_untyped("pageshow", move |e| {
         if e.unchecked_into::<web_sys::PageTransitionEvent>()
@@ -428,10 +400,6 @@ pub fn Browser() -> impl IntoView {
         Some(State::Closed(None)) => Some("Disconnected. The server closed the connection.".into()),
         _ => error.get(),
     };
-    let favorite = move || {
-        ctx.url
-            .with(|u| u.as_ref().is_some_and(|u| ctx.is_favorite(u)))
-    };
 
     view! {
         <Title text=title/>
@@ -440,7 +408,7 @@ pub fn Browser() -> impl IntoView {
                 class="hb-toolbar"
                 on:submit=move |e| {
                     e.prevent_default();
-                    go(address.get_untracked());
+                    go(address.get_untracked(), false);
                 }
             >
                 <button
@@ -450,7 +418,7 @@ pub fn Browser() -> impl IntoView {
                     aria-label="Reconnect"
                     on:click=move |_| match ctx.url.get_untracked() {
                         Some(_) => ctx.reload(),
-                        None => go(address.get_untracked()),
+                        None => go(address.get_untracked(), false),
                     }
                 >
                     "⟳"
@@ -470,29 +438,43 @@ pub fn Browser() -> impl IntoView {
                 </div>
                 <button
                     type="button"
-                    class="hb-icon-button"
-                    class:he-hidden=move || ctx.url.get().is_none()
-                    title=move || if favorite() { "Remove from favorites" } else { "Add to favorites" }
+                    class="hb-icon-button hb-star"
+                    class:hb-on=move || ctx.is_favorite()
+                    disabled=move || ctx.url.with(Option::is_none)
+                    title=move || if ctx.is_favorite() { "Remove from favorites" } else { "Add to favorites" }
                     aria-label="Favorite"
+                    aria-pressed=move || ctx.is_favorite().to_string()
                     on:click=move |_| {
-                        if let Some(url) = ctx.url.get_untracked() {
-                            let on = !ctx.is_favorite(&url);
-                            ctx.set_favorite(&url, on);
+                        if let Some(u) = ctx.url.get_untracked() {
+                            ctx.set_favorite(&u, !ctx.is_favorite());
                         }
                     }
                 >
-                    {move || if favorite() { "★" } else { "☆" }}
+                    {move || if ctx.is_favorite() { "★" } else { "☆" }}
                 </button>
                 <button
                     type="button"
                     class="hb-icon-button"
-                    title="History and favorites"
-                    aria-label="History and favorites"
-                    on:click=move |_| show_library.update(|open| *open = !*open)
+                    title="Favorites and history"
+                    aria-label="Favorites and history"
+                    aria-expanded=move || menu.get().to_string()
+                    on:click=move |_| menu.update(|m| *m = !*m)
                 >
                     "☰"
                 </button>
             </form>
+            <Show when=move || menu.get()>
+                <div class="hb-menu">
+                    <LibraryView
+                        ctx
+                        limit=50
+                        open=Callback::new(move |a: String| {
+                            menu.set(false);
+                            open.run(a);
+                        })
+                    />
+                </div>
+            </Show>
             <div class="hb-progress" class:he-hidden=move || state() != Some(State::Connecting)></div>
             <div class="hb-banner" class:he-hidden=move || banner().is_none() role="status">
                 <span>{banner}</span>
@@ -504,9 +486,6 @@ pub fn Browser() -> impl IntoView {
                     "Reconnect"
                 </button>
             </div>
-            <Show when=move || show_library.get()>
-                <LibraryPanel ctx=ctx open=open_and_close/>
-            </Show>
             {move || {
                 if has_page.get() {
                     view! {
@@ -516,124 +495,16 @@ pub fn Browser() -> impl IntoView {
                     }
                         .into_any()
                 } else {
-                    view! { <Welcome ctx/> }.into_any()
+                    view! { <Welcome ctx open/> }.into_any()
                 }
             }}
         </div>
     }
 }
 
-/// The history and favorites, shown under the toolbar by the ☰ button.
 #[component]
-fn LibraryPanel(ctx: Ctx, open: Callback<String>) -> impl IntoView {
-    let clear_history = move |_| {
-        ctx.library.update(|lib| {
-            lib.history.clear();
-            save_library(lib);
-        });
-    };
-    view! {
-        <section class="hb-library">
-            <div class="hb-library-head">
-                <h2>"Favorites"</h2>
-            </div>
-            <ul class="hb-entries">
-                {move || {
-                    ctx.library
-                        .get()
-                        .favorites
-                        .is_empty()
-                        .then(|| view! { <li class="hb-empty">"Star an address to keep it here."</li> })
-                }}
-                {move || {
-                    ctx.library
-                        .get()
-                        .favorites
-                        .into_iter()
-                        .map(|entry| {
-                            let url = entry.url.clone();
-                            let remove = entry.url.clone();
-                            view! {
-                                <li class="hb-entry-row">
-                                    <button
-                                        class="hb-entry"
-                                        on:click=move |_| open.run(url.clone())
-                                    >
-                                        <span class="hb-entry-label">{entry.label}</span>
-                                        <span class="hb-entry-url">{entry.url}</span>
-                                    </button>
-                                    <button
-                                        class="hb-icon-button hb-entry-action"
-                                        title="Remove from favorites"
-                                        aria-label="Remove from favorites"
-                                        on:click=move |_| {
-                                            if let Ok(url) = Url::parse(&remove) {
-                                                ctx.set_favorite(&url, false);
-                                            }
-                                        }
-                                    >
-                                        "✕"
-                                    </button>
-                                </li>
-                            }
-                        })
-                        .collect_view()
-                }}
-            </ul>
-            <div class="hb-library-head">
-                <h2>"History"</h2>
-                <button class="hb-link" on:click=clear_history>"Clear"</button>
-            </div>
-            <ul class="hb-entries">
-                {move || {
-                    ctx.library
-                        .get()
-                        .history
-                        .is_empty()
-                        .then(|| view! { <li class="hb-empty">"Nothing opened yet."</li> })
-                }}
-                {move || {
-                    ctx.library
-                        .get()
-                        .history
-                        .into_iter()
-                        .map(|entry| {
-                            let url = entry.url.clone();
-                            let forget = entry.url.clone();
-                            view! {
-                                <li class="hb-entry-row">
-                                    <button
-                                        class="hb-entry"
-                                        on:click=move |_| open.run(url.clone())
-                                    >
-                                        <span class="hb-entry-label">{entry.label}</span>
-                                        <span class="hb-entry-url">{entry.url}</span>
-                                    </button>
-                                    <button
-                                        class="hb-icon-button hb-entry-action"
-                                        title="Remove from history"
-                                        aria-label="Remove from history"
-                                        on:click=move |_| {
-                                            ctx.library.update(|lib| {
-                                                lib.history.retain(|e| e.url != forget);
-                                                save_library(lib);
-                                            });
-                                        }
-                                    >
-                                        "✕"
-                                    </button>
-                                </li>
-                            }
-                        })
-                        .collect_view()
-                }}
-            </ul>
-        </section>
-    }
-}
-
-#[component]
-fn Welcome(ctx: Ctx) -> impl IntoView {
+fn Welcome(ctx: Ctx, open: Callback<String>) -> impl IntoView {
+    let registered = RwSignal::new(None::<Result<(), String>>);
     view! {
         <div class="hb-welcome">
             <h1 class="he-h1">"hyperb"</h1>
@@ -641,8 +512,91 @@ fn Welcome(ctx: Ctx) -> impl IntoView {
                 "Enter the address of a hypereffect server, e.g. hyperb://example.com/app. "
                 "Remote servers use https; localhost, IP addresses and .onion use http."
             </p>
+            <LibraryView ctx limit=12 open/>
             <p class="he-caption">"Your key"</p>
             <code class="hb-key">{ctx.public_key()}</code>
+            <p class="he-caption">
+                <button class="hb-link" on:click=move |_| registered.set(Some(register_links()))>
+                    "Open web+hyperb:// links here"
+                </button>
+                {move || match registered.get() {
+                    Some(Ok(())) => " · Confirm it if your browser asks.".to_string(),
+                    Some(Err(e)) => format!(" · Not available: {e}"),
+                    None => String::new(),
+                }}
+            </p>
         </div>
+    }
+}
+
+/// Favorites, then the most recent `limit` history entries.
+#[component]
+fn LibraryView(ctx: Ctx, limit: usize, open: Callback<String>) -> impl IntoView {
+    let favorites = move || ctx.library.with(|l| l.favorites.clone());
+    let history = move || ctx.library.with(|l| l.history.iter().take(limit).cloned().collect::<Vec<_>>());
+    let unfavorite = Callback::new(move |a: String| {
+        if let Ok(u) = address::normalize(&a) {
+            ctx.set_favorite(&u, false);
+        }
+    });
+    let forget = Callback::new(move |a: String| {
+        ctx.library.set(store::update(|l, _| l.forget(&a)));
+    });
+    let clear = move |_| ctx.library.set(store::update(|l, _| l.clear_history()));
+    view! {
+        <div class="hb-library">
+            <Show when=move || ctx.library.with(|l| l.favorites.is_empty() && l.history.is_empty())>
+                <p class="he-caption">"Apps you open and your favorites show up here."</p>
+            </Show>
+            <Show when=move || ctx.library.with(|l| !l.favorites.is_empty())>
+                <h2 class="hb-library-heading">"Favorites"</h2>
+                <Entries entries=Signal::derive(favorites) icon="★" remove_title="Remove from favorites" open remove=unfavorite/>
+            </Show>
+            <Show when=move || ctx.library.with(|l| !l.history.is_empty())>
+                <h2 class="hb-library-heading">
+                    "History"
+                    <button class="hb-link" on:click=clear>"Clear history"</button>
+                </h2>
+                <Entries entries=Signal::derive(history) icon="🕘" remove_title="Remove from history" open remove=forget/>
+            </Show>
+        </div>
+    }
+}
+
+#[component]
+fn Entries(
+    entries: Signal<Vec<Entry>>,
+    icon: &'static str,
+    remove_title: &'static str,
+    open: Callback<String>,
+    remove: Callback<String>,
+) -> impl IntoView {
+    view! {
+        <ul class="hb-entries">
+            <For each=move || entries.get() key=|e| e.address.clone() let:e>
+                {
+                    let (a, b) = (e.address.clone(), e.address.clone());
+                    view! {
+                        <li>
+                            <button class="hb-entry" title=e.address.clone() on:click=move |_| open.run(a.clone())>
+                                <span class="hb-entry-icon" aria-hidden="true">{icon}</span>
+                                <span class="hb-entry-text">
+                                    <span class="hb-entry-title">{e.title.clone()}</span>
+                                    <span class="hb-entry-address">{e.address.clone()}</span>
+                                </span>
+                            </button>
+                            <button
+                                class="hb-icon-button hb-entry-remove"
+                                title=remove_title
+                                aria-label=remove_title
+                                on:click=move |_| remove.run(b.clone())
+                            >
+                                "×"
+                            </button>
+                        </li>
+                    }
+                }
+            </For>
+        </ul>
     }
 }

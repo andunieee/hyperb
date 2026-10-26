@@ -9,11 +9,15 @@
 //! Handle lifetime: `cancel` ends the session, which makes `await` return
 //! false; the thread that calls `await` then calls `free`, and nothing may
 //! use the handle after that.
+//!
+//! History and favorites live in a [`Store`] in the app's files directory;
+//! `open` records the history, and the library calls return it as JSON.
 
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
 use hyperb_core::hypereffect::{json, serde_json, Value};
 use hyperb_core::identity::Identity;
+use hyperb_core::library::Store;
 use hyperb_core::net::{Connection, Event};
 use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::{JClass, JObject, JString};
@@ -24,6 +28,15 @@ use std::sync::{Mutex, OnceLock};
 use url::Url;
 
 static IDENTITY: OnceLock<Identity> = OnceLock::new();
+static STORE: OnceLock<Mutex<Store>> = OnceLock::new();
+
+/// The store, in a temporary directory if `init` was not called.
+fn store() -> std::sync::MutexGuard<'static, Store> {
+    STORE
+        .get_or_init(|| Mutex::new(Store::open(std::env::temp_dir().join("hyperb"))))
+        .lock()
+        .unwrap()
+}
 
 struct Session {
     events: async_channel::Receiver<Event>,
@@ -161,6 +174,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_init(
         #[cfg(not(target_os = "android"))]
         let _ = context;
         let dir = files_dir.try_to_string(env)?;
+        let _ = STORE.set(Mutex::new(Store::open(Path::new(&dir))));
         let id = IDENTITY.get_or_init(|| {
             Identity::load_or_create(&Path::new(&dir).join("identity")).unwrap_or_else(|e| {
                 log::error!("cannot load identity ({e}); using a temporary one");
@@ -172,16 +186,25 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_init(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-/// `open(address: String): Long`. Throws if the address is invalid.
+/// `open(address: String, link: Boolean, reload: Boolean): Long`: opens a
+/// session, which unless `reload` goes to the history. Links (from other
+/// apps) cannot open local files. Throws if the address is invalid.
 #[no_mangle]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_open(
     mut env: EnvUnowned<'_>,
     _class: JClass,
     input: JString,
+    link: jboolean,
+    reload: jboolean,
 ) -> jlong {
     env.with_env(|env| -> jni::errors::Result<jlong> {
         let input = input.try_to_string(env)?;
-        let url = match address::normalize(&input) {
+        let url = if link {
+            address::from_link(&input)
+        } else {
+            address::normalize(&input)
+        };
+        let url = match url {
             Ok(u) => u,
             Err(e) => {
                 let _ = env.throw(format!("Invalid address: {e}"));
@@ -189,7 +212,13 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_open(
             }
         };
         let identity = IDENTITY.get_or_init(Identity::generate);
-        let conn = Connection::open(&url, identity);
+        let mut store = store();
+        if !reload {
+            if let Err(e) = store.visit(&url) {
+                log::warn!("cannot save the history: {e}");
+            }
+        }
+        let conn = store.connect(&url, identity);
         let s = Box::new(Session {
             events: conn.events(),
             inner: Mutex::new(Inner {
@@ -286,6 +315,69 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_input(
             .unwrap()
             .input(&id, value, event.as_deref());
         Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// `library(): String`: the history and favorites, as JSON
+/// (`hyperb_core::library::Library`).
+#[no_mangle]
+pub extern "system" fn Java_com_hyperb_app_RustBridge_library(
+    mut env: EnvUnowned<'_>,
+    _class: JClass,
+) -> jstring {
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let mut store = store();
+        store.reload();
+        Ok(env.new_string(store.library().to_json())?.into_raw())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// `setFavorite(address: String, on: Boolean): String`: adds or removes a
+/// favorite and returns the library. A new favorite wasm app is downloaded
+/// to be kept.
+#[no_mangle]
+pub extern "system" fn Java_com_hyperb_app_RustBridge_setFavorite(
+    mut env: EnvUnowned<'_>,
+    _class: JClass,
+    input: JString,
+    on: jboolean,
+) -> jstring {
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let input = input.try_to_string(env)?;
+        let mut store = store();
+        if let Ok(url) = address::normalize(&input) {
+            match store.set_favorite(&url, on) {
+                Ok(()) if on && store.library().keeps_module(&url) => store.download(&url),
+                Ok(()) => {}
+                Err(e) => log::warn!("cannot save the favorites: {e}"),
+            }
+        }
+        Ok(env.new_string(store.library().to_json())?.into_raw())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// `forget(address: String?): String`: removes an address from the history,
+/// or with null clears it, and returns the library.
+#[no_mangle]
+pub extern "system" fn Java_com_hyperb_app_RustBridge_forget(
+    mut env: EnvUnowned<'_>,
+    _class: JClass,
+    input: JString,
+) -> jstring {
+    env.with_env(|env| -> jni::errors::Result<jstring> {
+        let input = opt_string(env, &input)?;
+        let mut store = store();
+        let result = store.update(|l, _| match &input {
+            Some(a) => l.forget(a),
+            None => l.clear_history(),
+        });
+        if let Err(e) = result {
+            log::warn!("cannot save the history: {e}");
+        }
+        Ok(env.new_string(store.library().to_json())?.into_raw())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

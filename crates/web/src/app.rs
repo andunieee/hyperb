@@ -18,6 +18,8 @@ use leptos_router::{
 mod browser;
 #[cfg(feature = "hydrate")]
 mod render;
+#[cfg(feature = "hydrate")]
+mod store;
 
 /// Full HTML document rendered by the server; the `<head>` is where
 /// leptos_meta injects `<Title>` and friends.

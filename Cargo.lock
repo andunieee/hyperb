@@ -4209,10 +4209,15 @@ dependencies = [
  "hex",
  "hypereffect",
  "iroh",
+ "js-sys",
  "reqwest 0.13.5",
  "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "tokio",
  "url",
+ "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasmtime",
 ]
@@ -4297,6 +4302,7 @@ dependencies = [
  "console_error_panic_hook",
  "hex",
  "hyperb-core",
+ "js-sys",
  "leptos",
  "leptos_axum",
  "leptos_meta",
@@ -4306,6 +4312,7 @@ dependencies = [
  "tower-service",
  "url",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 

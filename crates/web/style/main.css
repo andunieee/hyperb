@@ -203,6 +203,112 @@ textarea {
   color: var(--muted);
 }
 
+.hb-icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.hb-star.hb-on {
+  color: var(--accent);
+}
+
+/* Favorites and history: on the welcome page and in the toolbar's menu. */
+
+.hb-menu {
+  position: fixed;
+  top: 52px;
+  right: 12px;
+  z-index: 20;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.hb-library {
+  align-self: stretch;
+  text-align: left;
+}
+
+.hb-welcome .hb-library {
+  margin: 16px 0;
+}
+
+.hb-library-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0 6px;
+  font-size: 1em;
+}
+
+.hb-entries {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.hb-entries li {
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+}
+
+.hb-entries li + li {
+  border-top: 1px solid var(--border);
+}
+
+.hb-entry {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hb-entry:hover {
+  background: var(--surface);
+}
+
+.hb-entry-icon {
+  color: var(--muted);
+}
+
+.hb-entry-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hb-entry-title,
+.hb-entry-address {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.hb-entry-address {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.hb-entry-remove {
+  flex: none;
+  color: var(--muted);
+}
+
 /* --- layout -------------------------------------------------------------------- */
 
 .he-root {

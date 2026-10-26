@@ -1,13 +1,15 @@
-//! hyperb in the terminal: a browser for hypereffect servers.
+//! hyperb in the terminal: runs one hypereffect app.
 //!
 //! ```text
 //! hyperb-tui <address>
 //! ```
 //!
-//! The address is required and fixed for the life of the process: there is no
-//! address bar, no history, and no favorites. Terminal input and network events
-//! arrive on one channel, so the loop sleeps until something happens, an
-//! onChange is due, or an animation needs its next frame.
+//! It has no address bar, tabs, history or favorites: it shows the app it
+//! was started with until it quits. The desktop renderer is the browser.
+//!
+//! Terminal input and network events arrive on one channel,
+//! so the loop sleeps until something happens, an onChange is due, or an
+//! animation needs its next frame.
 
 mod browser;
 mod edit;
@@ -28,6 +30,7 @@ use ratatui::style::{Color, Style};
 use ratatui::{DefaultTerminal, Frame};
 use std::io::{self, stdout};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::process::ExitCode;
 use std::time::{Duration, Instant};
 use url::Url;
 
@@ -39,20 +42,39 @@ pub enum Msg {
 const FRAME: Duration = Duration::from_millis(80);
 const IDLE: Duration = Duration::from_secs(60);
 
-const USAGE: &str = "usage: hyperb-tui <address>";
+const USAGE: &str = "usage: hyperb-tui <address>\n\n\
+    Runs the hypereffect app at <address>, e.g. hyperb://example.com/app,\n\
+    localhost:9001/restaurant or ~/apps/qr.wasm.";
 
-fn main() -> io::Result<()> {
-    let Some(input) = std::env::args().nth(1) else {
-        eprintln!("hyperb-tui: missing address\n{USAGE}");
-        std::process::exit(2);
-    };
-    let url = match address::normalize(&input) {
-        Ok(url) => url,
-        Err(e) => {
-            eprintln!("hyperb-tui: {e}\n{USAGE}");
-            std::process::exit(2);
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let url = match args.as_slice() {
+        [a] if a == "-h" || a == "--help" => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        [a] => match address::normalize(a) {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!("hyperb-tui: invalid address: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        _ => {
+            eprintln!("{USAGE}");
+            return ExitCode::from(2);
         }
     };
+    match start(url) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("hyperb-tui: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn start(url: Url) -> io::Result<()> {
     let identity = Identity::load_default().unwrap_or_else(|e| {
         eprintln!("hyperb: cannot load identity ({e}); using a temporary one");
         Identity::generate()
@@ -114,10 +136,8 @@ struct App {
 
 impl App {
     fn new(tx: Sender<Msg>, url: Url, identity: Identity) -> App {
-        let mut browser = Browser::new(tx, identity);
-        browser.open(url);
         App {
-            browser,
+            browser: Browser::new(tx, identity, url),
             quit: false,
         }
     }

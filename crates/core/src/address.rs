@@ -24,11 +24,13 @@ pub fn normalize(input: &str) -> Result<Url, String> {
         None => (None, input),
     };
     let forced = match scheme.as_deref() {
-        // `hyperb` is the user-facing scheme; `iroh` and `wasm` are accepted
-        // already normalized (a reconnect or a reshared display address).
+        // `hyperb` is the user-facing scheme, and `web+hyperb` its name where
+        // web browsers only let pages handle `web+` schemes; `iroh` and
+        // `wasm` are accepted already normalized (a reconnect or a reshared
+        // display address).
         None | Some("hyperb") | Some("web+hyperb") | Some("iroh") | Some("wasm") => None,
-        Some("http") | Some("hyperb+http") | Some("web+hyperb+http") => Some("http"),
-        Some("https") | Some("hyperb+https") | Some("web+hyperb+https") => Some("https"),
+        Some("http") | Some("hyperb+http") => Some("http"),
+        Some("https") | Some("hyperb+https") => Some("https"),
         Some(other) => return Err(format!("unsupported scheme '{other}'")),
     };
 
@@ -69,6 +71,20 @@ pub fn normalize(input: &str) -> Result<Url, String> {
         "https"
     });
     parse(&format!("{scheme}://{rest}"))
+}
+
+/// [`normalize`] for an address that comes from a link (another app, a web
+/// page, the system's URL handler) rather than from the user: local files are
+/// refused (`SPEC.md`, section 1.5), and so is input without a scheme.
+pub fn from_link(input: &str) -> Result<Url, String> {
+    if !input.contains("://") {
+        return Err("a link must have a scheme".into());
+    }
+    let url = normalize(input)?;
+    if kind(&url) == Kind::LocalWasm {
+        return Err("links cannot open local apps".into());
+    }
+    Ok(url)
 }
 
 fn wasm(path: &str) -> Result<Url, String> {
@@ -280,9 +296,9 @@ mod tests {
             n("hyperb+https://localhost:9001"),
             "https://localhost:9001/"
         );
-        // Browsers deliver custom handlers as `web+<scheme>`.
         assert_eq!(n("web+hyperb://example.com/a"), "https://example.com/a");
-        assert_eq!(n("web+hyperb://localhost:9001"), "http://localhost:9001/");
+        assert_eq!(n("Web+Hyperb://localhost:9001"), "http://localhost:9001/");
+        assert!(normalize("web+hyperb+http://example.com").is_err());
         assert!(normalize("ws://example.com").is_err());
         assert!(normalize("ftp://example.com").is_err());
         assert!(normalize("  ").is_err());
@@ -343,6 +359,24 @@ mod tests {
         assert!(normalize("hyperb:///opt/apps/").is_err());
         assert!(normalize("hyperb+http:///opt/a.wasm").is_err());
         assert_eq!(wasm_path(&normalize("localhost").unwrap()), None);
+    }
+
+    #[test]
+    fn links() {
+        assert_eq!(
+            from_link("web+hyperb://example.com/a").unwrap().as_str(),
+            "https://example.com/a"
+        );
+        assert_eq!(
+            from_link(&format!("hyperb://{ID}/x")).unwrap().scheme(),
+            "iroh"
+        );
+        assert!(from_link("hyperb://example.com/a.wasm").is_ok());
+        assert!(from_link("hyperb:///opt/a.wasm").is_err());
+        assert!(from_link("web+hyperb:///opt/a.wasm").is_err());
+        assert!(from_link("wasm:///opt/a.wasm").is_err());
+        assert!(from_link("/opt/a.wasm").is_err());
+        assert!(from_link("~/a.wasm").is_err());
     }
 
     #[test]

@@ -18,8 +18,6 @@ use wasmtime::{
     Caller, Config, Engine, Extern, Linker, Module, Store, StoreLimits, StoreLimitsBuilder,
 };
 
-/// Largest module accepted when downloading.
-const MAX_MODULE: usize = 64 << 20;
 /// Largest linear memory a module may grow to.
 const MAX_MEMORY: usize = 256 << 20;
 /// Instructions (roughly) one call into the module may run.
@@ -30,12 +28,17 @@ struct Host {
     limits: StoreLimits,
 }
 
+/// Runs the app at `url`, or `module` if given.
 pub(super) async fn run(
     url: Url,
+    module: Option<Vec<u8>>,
     out: async_channel::Receiver<String>,
     events: &async_channel::Sender<Event>,
 ) -> Result<(), String> {
-    let bytes = load(&url).await?;
+    let bytes = match module {
+        Some(m) => m,
+        None => load(&url).await?,
+    };
     let _ = events.send(Event::Open).await;
     let events = events.clone();
     tokio::task::spawn_blocking(move || exec(&bytes, out, events))
@@ -44,25 +47,10 @@ pub(super) async fn run(
 }
 
 async fn load(url: &Url) -> Result<Vec<u8>, String> {
-    if let Some(bytes) = crate::cache::get(url).await {
-        return Ok(bytes);
-    }
     if let Some(path) = crate::address::wasm_path(url) {
         return std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()));
     }
-    let resp = reqwest::get(url.clone())
-        .await
-        .and_then(|r| r.error_for_status())
-        .map_err(|e| e.to_string())?;
-    if resp.content_length().is_some_and(|n| n > MAX_MODULE as u64) {
-        return Err("the wasm app is too large".into());
-    }
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    if bytes.len() > MAX_MODULE {
-        return Err("the wasm app is too large".into());
-    }
-    crate::cache::put(url, &bytes).await;
-    Ok(bytes.to_vec())
+    super::download(url).await
 }
 
 fn exec(
@@ -150,8 +138,7 @@ mod tests {
             (call $send (local.get $p) (local.get $n))))"#;
 
     fn open(name: &str, wat: &str) -> Connection {
-        let path =
-            std::env::temp_dir().join(format!("hyperb-test-{}-{name}.wasm", std::process::id()));
+        let path = std::env::temp_dir().join(format!("hyperb-test-{}-{name}.wasm", std::process::id()));
         std::fs::write(&path, wat).unwrap();
         let url = address::normalize(&format!("hyperb://{}", path.display())).unwrap();
         Connection::open(&url, &Identity::generate())
@@ -164,14 +151,18 @@ mod tests {
         assert_eq!(events.recv_blocking().unwrap(), Event::Open);
         conn.send("hello {\"a\":1}\n".into());
         conn.send("action {}\n".into());
-        assert_eq!(
-            events.recv_blocking().unwrap(),
-            Event::Data("hello {\"a\":1}\n".into())
-        );
-        assert_eq!(
-            events.recv_blocking().unwrap(),
-            Event::Data("action {}\n".into())
-        );
+        assert_eq!(events.recv_blocking().unwrap(), Event::Data("hello {\"a\":1}\n".into()));
+        assert_eq!(events.recv_blocking().unwrap(), Event::Data("action {}\n".into()));
+    }
+
+    #[test]
+    fn preloaded_module() {
+        let url = address::normalize("hyperb://localhost:1/echo.wasm").unwrap();
+        let conn = Connection::open_module(&url, ECHO.as_bytes().to_vec());
+        let events = conn.events();
+        assert_eq!(events.recv_blocking().unwrap(), Event::Open);
+        conn.send("hello {}\n".into());
+        assert_eq!(events.recv_blocking().unwrap(), Event::Data("hello {}\n".into()));
     }
 
     #[test]
@@ -180,17 +171,11 @@ mod tests {
         let events = conn.events();
         assert_eq!(events.recv_blocking().unwrap(), Event::Open);
         conn.send("hello {}\n".into());
-        assert!(matches!(
-            events.recv_blocking().unwrap(),
-            Event::Closed(Some(_))
-        ));
+        assert!(matches!(events.recv_blocking().unwrap(), Event::Closed(Some(_))));
         let missing = Connection::open(
             &address::normalize("hyperb:///nonexistent/app.wasm").unwrap(),
             &Identity::generate(),
         );
-        assert!(matches!(
-            missing.events().recv_blocking().unwrap(),
-            Event::Closed(Some(_))
-        ));
+        assert!(matches!(missing.events().recv_blocking().unwrap(), Event::Closed(Some(_))));
     }
 }

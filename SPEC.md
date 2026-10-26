@@ -6,10 +6,11 @@ apps. This document specifies how a renderer is pointed at an app (the
 session. The hypereffect message protocol itself is not covered here.
 
 Status: all of it is implemented in `hyperb-core` (`address.rs`, `http.rs`,
-and `net/iroh.rs`, `net/wasm.rs` behind the `iroh` and `wasm` features, which
-the desktop and terminal renderers enable; the web and Android builds do not
-have them). The demo server serves its apps over HTTP and iroh, some of
-them also as wasm modules (`/<app>.wasm`), and prints their addresses.
+and `net/iroh.rs`, `net/wasm.rs` behind the `iroh` and `wasm` features). The
+desktop and terminal renderers have every kind of session; Android has all
+but iroh, and the web build has HTTP and remote wasm (`net/wasm_js.rs`, see
+section 4). The demo server serves its apps over HTTP and iroh, some of them
+also as wasm modules (`/<app>.wasm`), and prints their addresses.
 
 ## 1. Addresses
 
@@ -41,6 +42,9 @@ renderers lowercase it.
   edge cases only (for example a TLS-terminating proxy on `localhost`, or a
   plain-http server on a public name); nothing should generate them by
   default. They are errors with an iroh or local address.
+- `web+hyperb://` is an alias of `hyperb://`, because web browsers only let
+  pages handle schemes starting with `web+`. Renderers accept and handle
+  both (section 1.7), and display `hyperb://`.
 - `http://` and `https://` are accepted as aliases of the matching variants,
   so existing URLs keep working.
 - Input without a scheme is read as `hyperb://`. A bare absolute path
@@ -64,6 +68,11 @@ section 4. The fragment is the route, as for local files. The transport
 scheme is chosen as in 1.2. Remote wasm sessions are never shown as secure
 (section 1.6).
 
+Renderers may keep the module of an app the user marked as a favorite and
+run it from that copy, without the network; they download it again in the
+background on each session, so the next one gets any update. The copy is
+keyed by the address without the fragment, so every route shares it.
+
 ### 1.4 Iroh addresses
 
 `hyperb://<endpoint-id>[/path][?query]`, where `<endpoint-id>` is the
@@ -79,8 +88,9 @@ remote address (it is not sent anywhere, so it cannot be confused with the
 file path).
 
 For safety, renderers should open local wasm addresses only when the user
-enters them (address bar, file picker, command line), never from a link or
-redirect coming from an app or a remote page.
+enters them (address bar, file picker, command line, their own history and
+favorites), never from a link or redirect coming from an app or a remote
+page (section 1.7).
 
 ### 1.6 Canonical form and security
 
@@ -104,6 +114,24 @@ alter it and no code from a remote party runs on this machine:
 | local wasm                       | yes (no network, and the user chose the file)               |
 | `http` app                       | no (`.onion` is encrypted by Tor but still shown as `http`) |
 | remote wasm, over `https` or not | no (foreign code)                                           |
+
+### 1.7 Links
+
+Renderers register as the system's handler of `hyperb://` and
+`web+hyperb://` links where the platform allows it:
+
+- Desktop: the `x-scheme-handler/hyperb` and `x-scheme-handler/web+hyperb`
+  MIME types (`crates/desktop/com.hyperb.app.desktop`, installed by
+  `just desktop-install`). Links open in a new tab of the running window.
+- Android: a `VIEW` intent filter for both schemes.
+- Web: `navigator.registerProtocolHandler("web+hyperb", …)`, after the user
+  asks for it on the welcome page; the browser sends links to the page as
+  `?link=<address>`. Pages cannot handle `hyperb` itself.
+
+The terminal renderer is not a handler: it runs the one address it is given.
+
+An address that comes from a link must have a scheme, and must not be a
+local wasm address (`address::from_link`).
 
 ## 2. HTTP session
 
@@ -158,6 +186,12 @@ files or network.
 Limits: 256 MiB of memory, and about 5 billion instructions of fuel for each
 `receive`. Going over them, or any trap, closes the session with the error.
 The module cannot tick; it only reacts to lines.
+
+The web renderer runs modules on the browser's WebAssembly engine instead
+of wasmtime, with the same imports and exports, except that it accepts only
+the binary format, cannot open local files, and has no fuel or memory
+limits: the module runs on the page's thread, so one that never returns
+freezes the page.
 
 ## 5. Sessions in the renderer
 

@@ -6,12 +6,12 @@
 //! - [`identity`]: the renderer's ed25519 keypair, presented to servers.
 //! - [`http`]: the HTTP transport's protocol, shared with servers; [`sse`]
 //!   parses its event stream.
+//! - [`library`]: history, favorites and kept wasm modules.
 //! - [`net`] (feature `net`): connections over the transports.
 //! - [`hypereffect`] is re-exported; its `client::Client` is the renderer core.
 
 pub mod address;
 #[cfg(feature = "net")]
-pub mod cache;
 pub mod http;
 pub mod identity;
 pub mod library;

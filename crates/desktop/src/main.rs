@@ -1,8 +1,13 @@
 //! hyperb: a browser for hypereffect servers.
 //!
 //! ```text
-//! hyperb-desktop [address...]    # each address opens in a tab
+//! hyperb-desktop [address...]            # each address opens in a tab
+//! hyperb-desktop --links [address...]    # the same, for links from other apps
 //! ```
+//!
+//! One instance runs per user: launching it again opens the addresses in the
+//! running window. The system opens `hyperb://` and `web+hyperb://` links
+//! with `--links` (see `com.hyperb.app.desktop`), which refuses local files.
 
 mod clamp;
 mod debug;
@@ -14,70 +19,77 @@ use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use gtk4 as gtk;
 use hyperb_core::identity::Identity;
-use library::Store;
+use library::Library;
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use tab::Tab;
 
 const APP_ID: &str = "com.hyperb.app";
 
 fn main() -> glib::ExitCode {
-    // `web+hyperb` links arrive exactly as they were written.
-    let mut urls: Vec<String> = std::env::args().skip(1).collect();
-    urls.retain(|u| u != "%u");
-    let identity = Identity::load_default().unwrap_or_else(|e| {
-        eprintln!("hyperb: cannot load identity ({e}); using a temporary one");
-        Identity::generate()
-    });
-    let library = Store::load();
-    register_scheme_handler();
     let app = gtk::Application::builder()
         .application_id(APP_ID)
-        .flags(gio::ApplicationFlags::NON_UNIQUE)
+        .flags(gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
-    app.connect_startup(|_| load_css());
-    app.connect_activate(move |app| Browser::open(app, &urls, &identity, &library));
+    app.add_main_option(
+        "links",
+        glib::Char::from(0),
+        glib::OptionFlags::NONE,
+        glib::OptionArg::None,
+        "Open the addresses as links from another app: local files are refused",
+        None,
+    );
+    // Only the first instance gets here; later ones pass their command
+    // line to it and exit.
+    let state: Rc<RefCell<Option<Shared>>> = Rc::default();
+    {
+        let state = state.clone();
+        app.connect_startup(move |_| {
+            load_css();
+            let identity = Identity::load_default().unwrap_or_else(|e| {
+                eprintln!("hyperb: cannot load identity ({e}); using a temporary one");
+                Identity::generate()
+            });
+            *state.borrow_mut() = Some((identity, Library::open()));
+        });
+    }
+    let window: Rc<RefCell<Weak<Browser>>> = Rc::default();
+    app.connect_command_line(move |app, cmd| {
+        let links = cmd.options_dict().contains("links");
+        let urls: Vec<String> = cmd
+            .arguments()
+            .iter()
+            .skip(1)
+            .map(|a| a.to_string_lossy().into_owned())
+            .filter(|a| !a.is_empty())
+            .collect();
+        let b = window.borrow().upgrade();
+        match b {
+            Some(b) => {
+                if urls.is_empty() {
+                    b.add_tab(None, false);
+                }
+                b.open_all(&urls, links);
+                b.window.present();
+            }
+            None => {
+                let (identity, library) = state.borrow().clone().expect("started up");
+                let b = Browser::open(app, identity, library);
+                b.open_all(&urls, links);
+                *window.borrow_mut() = Rc::downgrade(&b);
+            }
+        }
+        glib::ExitCode::SUCCESS
+    });
     app.set_accels_for_action("win.new-tab", &["<Ctrl>t"]);
     app.set_accels_for_action("win.close-tab", &["<Ctrl>w"]);
     app.set_accels_for_action("win.focus-url", &["<Ctrl>l", "F6"]);
     app.set_accels_for_action("win.reload", &["F5", "<Ctrl>r"]);
-    // Addresses are ours, not GTK's.
-    app.run_with_args::<&str>(&[])
+    app.run()
 }
 
-/// Writes the desktop entry that makes `hyperb://` and `web+hyperb://` open
-/// this binary, then asks the desktop database to pick it up. Failure is not
-/// fatal: the app still runs, links just do not resolve.
-fn register_scheme_handler() {
-    let Ok(exe) = std::env::current_exe() else {
-        return;
-    };
-    let dir = library::applications_dir();
-    if std::fs::create_dir_all(&dir).is_err() {
-        return;
-    }
-    let entry = format!(
-        "[Desktop Entry]\n\
-         Type=Application\n\
-         Name=hyperb\n\
-         Comment=Browse hypereffect servers\n\
-         Exec=\"{}\" %u\n\
-         Terminal=false\n\
-         Categories=Network;\n\
-         MimeType=x-scheme-handler/hyperb;x-scheme-handler/web+hyperb;\n",
-        exe.display()
-    );
-    let path = dir.join("hyperb.desktop");
-    let current = std::fs::read_to_string(&path).ok();
-    if current.as_deref() != Some(entry.as_str())
-        && std::fs::write(&path, &entry).is_err()
-    {
-        return;
-    }
-    let _ = std::process::Command::new("update-desktop-database")
-        .arg(&dir)
-        .status();
-}
+/// What every window of the instance shares.
+type Shared = (Identity, Rc<Library>);
 
 fn load_css() {
     let provider = gtk::CssProvider::new();
@@ -94,11 +106,11 @@ struct Browser {
     notebook: gtk::Notebook,
     tabs: RefCell<Vec<Rc<Tab>>>,
     identity: Identity,
-    library: Rc<Store>,
+    library: Rc<Library>,
 }
 
 impl Browser {
-    fn open(app: &gtk::Application, urls: &[String], identity: &Identity, library: &Rc<Store>) {
+    fn open(app: &gtk::Application, identity: Identity, library: Rc<Library>) -> Rc<Browser> {
         let notebook = gtk::Notebook::new();
         notebook.set_scrollable(true);
         notebook.set_tab_pos(gtk::PositionType::Left);
@@ -119,15 +131,15 @@ impl Browser {
             window: window.clone(),
             notebook: notebook.clone(),
             tabs: RefCell::new(Vec::new()),
-            identity: identity.clone(),
-            library: library.clone(),
+            identity,
+            library,
         });
 
         {
             let b = Rc::downgrade(&b);
             new_tab.connect_clicked(move |_| {
                 if let Some(b) = b.upgrade() {
-                    b.add_tab(None);
+                    b.add_tab(None, false);
                 }
             });
         }
@@ -152,26 +164,32 @@ impl Browser {
             });
             window.add_action(&a);
         };
-        action("new-tab", |b, _| b.add_tab(None));
+        action("new-tab", |b, _| b.add_tab(None, false));
         action("close-tab", |b, t| b.close_tab(t));
         action("focus-url", |_, t| t.focus_url());
         action("reload", |_, t| t.reload());
 
-        if urls.is_empty() {
-            b.add_tab(None);
-        }
-        for u in urls {
-            b.add_tab(Some(u));
-        }
         // The browser lives as long as its window.
-        let keep = RefCell::new(Some(b));
+        let keep = RefCell::new(Some(b.clone()));
         window.connect_destroy(move |_| {
             keep.borrow_mut().take();
         });
         window.present();
+        b
     }
 
-    fn add_tab(self: &Rc<Self>, url: Option<&str>) {
+    /// Opens each address in a new tab, or an empty tab if there are none
+    /// and no tab yet.
+    fn open_all(self: &Rc<Self>, urls: &[String], links: bool) {
+        if urls.is_empty() && self.tabs.borrow().is_empty() {
+            self.add_tab(None, false);
+        }
+        for u in urls {
+            self.add_tab(Some(u), links);
+        }
+    }
+
+    fn add_tab(self: &Rc<Self>, url: Option<&str>, link: bool) {
         let t = Tab::new(self.identity.clone(), self.library.clone());
         let i = self.notebook.append_page(&t.page, Some(&t.tab_label));
         self.notebook.set_tab_reorderable(&t.page, true);
@@ -199,6 +217,7 @@ impl Browser {
         self.tabs.borrow_mut().push(t.clone());
         self.notebook.set_current_page(Some(i));
         match url {
+            Some(u) if link => t.open_link(u),
             Some(u) => t.navigate(u),
             None => t.focus_url(),
         }

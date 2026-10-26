@@ -1,10 +1,10 @@
-//! The browser: one connection to the server named on the command line, and
-//! the rendered session.
+//! The browser: a connection to the one app given on the command line, and
+//! the rendered session, under a bar with its address.
 //!
-//! There is no navigation: the address is fixed for the life of the process.
-//! When the transport opens the browser sends `hello` and from then on feeds
-//! every frame to the [`Client`]. When it closes the last state stays on
-//! screen with controls disabled, and a banner offers to reconnect.
+//! It connects at once; when the connection opens the browser sends `hello`
+//! and from then on feeds every frame to the [`Client`]. When the transport
+//! closes the last state stays on screen with controls disabled, and a banner
+//! offers to reconnect.
 
 use crate::page::{Action, Page, ACCENT, SPINNER};
 use crate::Msg;
@@ -15,7 +15,7 @@ use hyperb_core::net::{Connection, Event};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use std::io::Write;
 use std::sync::mpsc::Sender;
 use std::time::Instant;
@@ -23,7 +23,6 @@ use url::Url;
 
 pub struct Browser {
     pub title: String,
-    url: String,
     session: Session,
     page: Page,
     /// The resolved tree, rebuilt whenever the client reports changes.
@@ -37,7 +36,7 @@ pub struct Browser {
 struct Session {
     client: Client,
     conn: Option<Connection>,
-    url: Option<Url>,
+    url: Url,
     /// Bumped on every connect, so events from replaced connections are dropped.
     generation: u64,
     state: State,
@@ -45,7 +44,6 @@ struct Session {
 
 #[derive(Clone, PartialEq)]
 enum State {
-    Idle,
     Connecting,
     Open,
     Closed(Option<String>),
@@ -60,16 +58,16 @@ struct Rects {
 }
 
 impl Browser {
-    pub fn new(tx: Sender<Msg>, identity: Identity) -> Browser {
-        Browser {
-            title: "hyperb".into(),
-            url: String::new(),
+    /// Connects to `url`.
+    pub fn new(tx: Sender<Msg>, identity: Identity, url: Url) -> Browser {
+        let mut b = Browser {
+            title: address::label(&url),
             session: Session {
                 client: Client::new(),
                 conn: None,
-                url: None,
+                url,
                 generation: 0,
-                state: State::Idle,
+                state: State::Connecting,
             },
             page: Page::new(),
             tree: Vec::new(),
@@ -77,7 +75,9 @@ impl Browser {
             epoch: Instant::now(),
             rects: Rects::default(),
             identity,
-        }
+        };
+        b.reload();
+        b
     }
 
     pub fn animating(&self) -> bool {
@@ -93,18 +93,9 @@ impl Browser {
         self.apply(acts);
     }
 
-    /// Opens the one address this process browses, chosen on the command line.
-    pub fn open(&mut self, url: Url) {
-        self.url = address::hyperb(&url);
-        self.title = address::label(&url);
-        self.connect(url);
-    }
-
-    /// Reopens the address after a transport failure.
+    /// Connects again.
     pub fn reload(&mut self) {
-        if let Some(url) = self.session.url.clone() {
-            self.connect(url);
-        }
+        self.connect(self.session.url.clone());
     }
 
     fn connect(&mut self, url: Url) {
@@ -114,7 +105,7 @@ impl Browser {
         // Until the new transport opens, nothing may be sent: hello must come first.
         s.client.close();
         s.conn = Some(conn);
-        s.url = Some(url);
+        s.url = url;
         s.generation += 1;
         s.state = State::Connecting;
         let (tx, generation) = (self.tx.clone(), s.generation);
@@ -156,8 +147,7 @@ impl Browser {
         let s = &mut self.session;
         let diags = s.client.take_diagnostics();
         if !diags.is_empty() {
-            let url = s.url.as_ref().map(Url::as_str).unwrap_or("-");
-            log(url, &diags);
+            log(s.url.as_str(), &diags);
         }
         if !s.client.take_changes().is_empty() {
             self.tree = s.client.tree();
@@ -211,6 +201,7 @@ impl Browser {
 
     pub fn mouse(&mut self, m: MouseEvent) {
         let p = Position::new(m.column, m.row);
+        let click = matches!(m.kind, MouseEventKind::Down(_));
         if m.kind == MouseEventKind::Down(MouseButton::Left)
             && (self.rects.reload.contains(p) || self.rects.banner.is_some_and(|b| b.contains(p)))
         {
@@ -218,7 +209,6 @@ impl Browser {
             return;
         }
         // Wheel and drags go to the page wherever they are; clicks only inside it.
-        let click = matches!(m.kind, MouseEventKind::Down(_));
         if click && !self.rects.content.contains(p) {
             return;
         }
@@ -244,28 +234,20 @@ impl Browser {
         buf.set_style(bar, bar_style);
         self.rects.reload = Rect::new(bar.x, bar.y, 3, 1);
         buf.set_stringn(bar.x, bar.y, " ⟳ ", 3, bar_style.fg(ACCENT));
-        let (glyph, color) = match (
-            &self.session.state,
-            self.session.url.as_ref().map(Url::scheme),
-        ) {
-            (State::Connecting, _) => {
-                (SPINNER[(tick / 80) as usize % SPINNER.len()], Color::Yellow)
-            }
-            (State::Open, Some("https" | "iroh")) => ("●", Color::Green),
-            (State::Open, _) => ("●", Color::Yellow),
-            (State::Closed(_), _) => ("●", Color::Red),
-            (State::Idle, _) => (" ", Color::Reset),
+        let secure = address::is_secure(&self.session.url);
+        let (glyph, color) = match &self.session.state {
+            State::Connecting => (SPINNER[(tick / 80) as usize % SPINNER.len()], Color::Yellow),
+            State::Open if secure => ("●", Color::Green),
+            State::Open => ("●", Color::Yellow),
+            State::Closed(_) => ("●", Color::Red),
         };
         buf.set_stringn(bar.x + 3, bar.y, glyph, 1, bar_style.fg(color));
-        let field = Rect::new(bar.x + 5, bar.y, bar.width.saturating_sub(6), 1);
-        let fstyle = Style::new().fg(Color::White).bg(Color::Indexed(236));
-        buf.set_style(field, fstyle);
         buf.set_stringn(
-            field.x + 1,
-            field.y,
-            &self.url,
-            field.width.saturating_sub(2) as usize,
-            fstyle,
+            bar.x + 5,
+            bar.y,
+            address::hyperb(&self.session.url),
+            bar.width.saturating_sub(6) as usize,
+            bar_style.fg(Color::Gray),
         );
 
         // Banner.

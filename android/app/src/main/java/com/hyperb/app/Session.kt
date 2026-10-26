@@ -9,8 +9,8 @@ import org.json.JSONObject
  * [run] blocks a background thread until the session is over and then frees
  * the native handle; every other call takes [lock] and does nothing after that.
  */
-class Session(address: String) {
-    private var handle = RustBridge.open(address)
+class Session(address: String, link: Boolean, reload: Boolean) {
+    private var handle = RustBridge.open(address, link, reload)
     private val lock = Any()
 
     fun snapshot(): Snapshot? = synchronized(lock) {
@@ -62,6 +62,29 @@ class Snapshot(
                 connected = o.optBoolean("connected"),
                 tree = Node.list(o.optJSONArray("tree")),
             )
+        }
+    }
+}
+
+/** The history (most recent first) and favorites, from [RustBridge.library]. */
+class Library(val history: List<Entry>, val favorites: List<Entry>) {
+    class Entry(val address: String, val title: String)
+
+    fun isFavorite(address: String?) = favorites.any { it.address == address }
+
+    companion object {
+        val EMPTY = Library(emptyList(), emptyList())
+
+        fun parse(json: String): Library {
+            val o = JSONObject(json)
+            fun list(key: String): List<Entry> {
+                val a = o.optJSONArray(key) ?: return emptyList()
+                return List(a.length()) {
+                    val e = a.getJSONObject(it)
+                    Entry(e.getString("address"), e.optString("title", e.getString("address")))
+                }
+            }
+            return Library(list("history"), list("favorites"))
         }
     }
 }

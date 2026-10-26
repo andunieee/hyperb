@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=hyperb
+GenericName=hypereffect browser
+Comment=Open hypereffect apps
+Exec=hyperb-desktop --links %U
+Icon=web-browser
+Terminal=false
+Categories=Network;
+MimeType=x-scheme-handler/hyperb;x-scheme-handler/web+hyperb;
+StartupNotify=true
+StartupWMClass=com.hyperb.app

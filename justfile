@@ -35,6 +35,21 @@ build:
 desktop *args:
     cargo run -p hyperb-desktop -- {{args}}
 
+# Install the desktop app for this user (~/.local) as the handler of hyperb:// and web+hyperb:// links
+desktop-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --release -p hyperb-desktop
+    target=$(cargo metadata --no-deps --format-version 1 | jq -r .target_directory)
+    bin="$HOME/.local/bin/hyperb-desktop"
+    apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    install -Dm755 "$target/release/hyperb-desktop" "$bin"
+    mkdir -p "$apps"
+    sed "s#^Exec=hyperb-desktop #Exec=$bin #" crates/desktop/com.hyperb.app.desktop > "$apps/com.hyperb.app.desktop"
+    update-desktop-database "$apps" 2>/dev/null || true
+    xdg-mime default com.hyperb.app.desktop x-scheme-handler/hyperb x-scheme-handler/web+hyperb
+    echo "installed $bin; hyperb:// and web+hyperb:// links now open in it"
+
 # Run the terminal app
 tui *args:
     cargo run -p hyperb-tui -- {{args}}
