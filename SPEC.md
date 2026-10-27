@@ -7,8 +7,7 @@ session. The hypereffect message protocol itself is not covered here.
 
 Status: all of it is implemented in `hyperb-core` (`address.rs`, `http.rs`,
 and `net/iroh.rs`, `net/wasm.rs` behind the `iroh` and `wasm` features). The
-desktop and terminal renderers have every kind of session; Android has all
-but iroh, and the web build has HTTP and remote wasm (`net/wasm_js.rs`, see
+desktop, terminal and Android renderers have every kind of session, and the web build has HTTP and remote wasm (`net/wasm_js.rs`, see
 section 4). The demo server serves its apps over HTTP and iroh, some of them
 also as wasm modules (`/<app>.wasm`), and prints their addresses.
 

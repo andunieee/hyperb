@@ -8,9 +8,9 @@ name = "hyperb_mobile"
 crate-type = ["cdylib"]
 
 [dependencies]
-# wasm runs on wasmtime: Cranelift on arm64 and x86_64, its Pulley
+# Sessions over iroh; wasm runs on wasmtime: Cranelift on arm64 and x86_64, its Pulley
 # interpreter on 32-bit ARM.
-hyperb-core = { workspace = true, features = ["net", "wasm"] }
+hyperb-core = { workspace = true, features = ["net", "wasm", "iroh"] }
 url = "2"
 async-channel = "2"
 jni = "0.22"
