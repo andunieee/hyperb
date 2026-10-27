@@ -356,6 +356,7 @@ pub fn Browser() -> impl IntoView {
     }
     let open = Callback::new(move |a: String| go(a, false));
     let menu = RwSignal::new(false);
+    let settings = RwSignal::new(false);
     window_event_listener(ev::keydown, move |e| {
         if e.key() == "Escape" {
             ctx.dismiss_dialog();
@@ -465,7 +466,40 @@ pub fn Browser() -> impl IntoView {
                 >
                     "☰"
                 </button>
+                <button
+                    type="button"
+                    class="hb-icon-button"
+                    title="Settings"
+                    aria-label="Settings"
+                    on:click=move |_| settings.set(true)
+                >
+                    "⚙"
+                </button>
             </form>
+            <Show when=move || settings.get()>
+                <div class="he-backdrop" on:click=move |_| settings.set(false)>
+                    <div
+                        class="he-dialog"
+                        role="dialog"
+                        aria-label="Settings"
+                        on:click=|e| e.stop_propagation()
+                    >
+                        <div class="he-dialog-header">
+                            <h2 class="he-dialog-title">"Settings"</h2>
+                            <button
+                                type="button"
+                                class="hb-icon-button"
+                                aria-label="Close"
+                                on:click=move |_| settings.set(false)
+                            >
+                                "✕"
+                            </button>
+                        </div>
+                        <p class="he-caption">"Your key"</p>
+                        <code class="hb-key">{ctx.public_key()}</code>
+                    </div>
+                </div>
+            </Show>
             <Show when=move || menu.get()>
                 <div class="hb-menu">
                     <LibraryView
@@ -516,8 +550,6 @@ fn Welcome(ctx: Ctx, open: Callback<String>) -> impl IntoView {
                 "Remote servers use https; localhost, IP addresses and .onion use http."
             </p>
             <LibraryView ctx limit=12 open/>
-            <p class="he-caption">"Your key"</p>
-            <code class="hb-key">{ctx.public_key()}</code>
             <p class="he-caption">
                 <button class="hb-link" on:click=move |_| registered.set(Some(register_links()))>
                     "Open web+hyperb:// links here"

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -31,7 +32,9 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +52,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -253,7 +257,31 @@ private fun Toolbar(b: Browser) {
         IconButton(onClick = b::reload, enabled = snap != null || b.address.isNotBlank()) {
             Icon(Icons.Default.Refresh, "Reconnect")
         }
+        var settings by remember { mutableStateOf(false) }
+        IconButton(onClick = { settings = true }) { Icon(Icons.Default.Settings, "Settings") }
+        if (settings) Settings(b.publicKey) { settings = false }
     }
+}
+
+@Composable
+private fun Settings(publicKey: String?, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        title = { Text("Settings") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Your key", style = MaterialTheme.typography.labelMedium)
+                SelectionContainer {
+                    Text(
+                        publicKey ?: "unavailable",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -306,23 +334,6 @@ private fun Welcome(b: Browser) {
             }
             items(lib.history.take(50), key = { "h:" + it.address }) { e ->
                 EntryRow(e, null, "Remove from history", { b.navigate(e.address) }) { b.forget(e.address) }
-            }
-        }
-        b.publicKey?.let {
-            item {
-                Column(
-                    Modifier.padding(vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text("Your key", style = MaterialTheme.typography.labelMedium)
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
         }
     }

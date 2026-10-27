@@ -138,7 +138,13 @@ impl Browser {
         let new_tab = gtk::Button::from_icon_name("list-add-symbolic");
         new_tab.add_css_class("flat");
         new_tab.set_tooltip_text(Some("New tab (Ctrl+T)"));
-        notebook.set_action_widget(&new_tab, gtk::PackType::End);
+        let settings = gtk::Button::from_icon_name("emblem-system-symbolic");
+        settings.add_css_class("flat");
+        settings.set_tooltip_text(Some("Settings"));
+        let ends = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        ends.append(&settings);
+        ends.append(&new_tab);
+        notebook.set_action_widget(&ends, gtk::PackType::End);
 
         let window = gtk::ApplicationWindow::builder()
             .application(app)
@@ -155,6 +161,14 @@ impl Browser {
             library,
         });
 
+        {
+            let b = Rc::downgrade(&b);
+            settings.connect_clicked(move |_| {
+                if let Some(b) = b.upgrade() {
+                    b.show_settings();
+                }
+            });
+        }
         {
             let b = Rc::downgrade(&b);
             new_tab.connect_clicked(move |_| {
@@ -196,6 +210,32 @@ impl Browser {
         });
         window.present();
         b
+    }
+
+    fn show_settings(&self) {
+        let key = gtk::Label::new(Some(&self.identity.public().to_string()));
+        key.set_selectable(true);
+        key.set_wrap(true);
+        key.set_xalign(0.0);
+        key.add_css_class("monospace");
+        let heading = gtk::Label::new(Some("Your key"));
+        heading.set_xalign(0.0);
+        heading.add_css_class("heading");
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        content.set_margin_top(16);
+        content.set_margin_bottom(16);
+        content.set_margin_start(16);
+        content.set_margin_end(16);
+        content.append(&heading);
+        content.append(&key);
+        gtk::Window::builder()
+            .title("Settings")
+            .transient_for(&self.window)
+            .modal(true)
+            .resizable(false)
+            .child(&content)
+            .build()
+            .present();
     }
 
     /// Opens each address in a new tab, or an empty tab if there are none

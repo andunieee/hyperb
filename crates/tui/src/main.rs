@@ -42,9 +42,10 @@ pub enum Msg {
 const FRAME: Duration = Duration::from_millis(80);
 const IDLE: Duration = Duration::from_secs(60);
 
-const USAGE: &str = "usage: hyperb-tui <address>\n\n\
+const USAGE: &str = "usage: hyperb-tui <address>\n       hyperb-tui --key\n\n\
     Runs the hypereffect app at <address>, e.g. hyperb://example.com/app,\n\
-    localhost:9001/restaurant or ~/apps/qr.wasm.";
+    localhost:9001/restaurant or ~/apps/qr.wasm.\n\
+    --key prints this app's public key and exits.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -52,6 +53,18 @@ fn main() -> ExitCode {
         [a] if a == "-h" || a == "--help" => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
+        }
+        [a] if a == "--key" => {
+            return match Identity::load_default() {
+                Ok(id) => {
+                    println!("{}", id.public());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("hyperb-tui: cannot load identity: {e}");
+                    ExitCode::FAILURE
+                }
+            };
         }
         [a] => match address::normalize(a) {
             Ok(u) => u,
