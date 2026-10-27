@@ -241,6 +241,18 @@ button.he-success {
   color: white;
 }
 
+/* pointer cursor on everything clickable */
+button:not(:disabled),
+checkbutton:not(:disabled),
+switch:not(:disabled),
+scale:not(:disabled),
+dropdown:not(:disabled),
+notebook > header > tabs > tab,
+row.activatable,
+.hb-entry {
+  cursor: pointer;
+}
+
 /* sidebar tabs */
 notebook > header.left > tabs > tab {
   padding: 6px 8px;
