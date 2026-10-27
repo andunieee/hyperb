@@ -32,9 +32,6 @@ object RustBridge {
     /** Adds or removes a favorite (a wasm app is then kept for offline use); returns the library. */
     @JvmStatic external fun setFavorite(address: String, on: Boolean): String
 
-    /** Remembers the open address (or none) to reopen it on the next start. */
-    @JvmStatic external fun setSession(address: String?)
-
     /** Removes [address] from the history, or clears it if null; returns the library. */
     @JvmStatic external fun forget(address: String?): String
 }

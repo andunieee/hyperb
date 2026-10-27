@@ -67,7 +67,7 @@ class Snapshot(
 }
 
 /** The history (most recent first) and favorites, from [RustBridge.library]. */
-class Library(val history: List<Entry>, val favorites: List<Entry>, val session: List<String> = emptyList()) {
+class Library(val history: List<Entry>, val favorites: List<Entry>) {
     class Entry(val address: String, val title: String)
 
     fun isFavorite(address: String?) = favorites.any { it.address == address }
@@ -84,8 +84,7 @@ class Library(val history: List<Entry>, val favorites: List<Entry>, val session:
                     Entry(e.getString("address"), e.optString("title", e.getString("address")))
                 }
             }
-            val s = o.optJSONArray("session")
-            return Library(list("history"), list("favorites"), List(s?.length() ?: 0) { s!!.getString(it) })
+            return Library(list("history"), list("favorites"))
         }
     }
 }

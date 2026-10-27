@@ -1,5 +1,6 @@
 package com.hyperb.app
 
+import android.app.ActivityManager
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -51,6 +52,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,7 +68,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.concurrent.thread
 
-class MainActivity : ComponentActivity() {
+/**
+ * A window: the launcher opens one on the welcome page, and every link opens another
+ * ([LinkActivity]), each with its own session. They share the process and the Rust core.
+ */
+open class MainActivity : ComponentActivity() {
     private val browser = Browser()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,33 +85,47 @@ class MainActivity : ComponentActivity() {
             null
         }
         browser.loadLibrary()
-        // A link opens what it names; otherwise the last session comes back,
-        // also after a restart or a rotation.
-        if (savedInstanceState == null && intent?.action == Intent.ACTION_VIEW) {
-            openLink(intent)
-        } else {
-            browser.library.session.firstOrNull()?.let { browser.navigate(it) }
+        // A window that the system recreates goes back to its address; a new one opens its
+        // link, if it has one.
+        val restored = savedInstanceState?.getString(ADDRESS)
+        when {
+            restored != null -> browser.navigate(restored, reload = true)
+            savedInstanceState == null && intent?.action == Intent.ACTION_VIEW ->
+                intent.dataString?.let { browser.navigate(it, link = true) }
         }
-        setContent { HyperbTheme { BrowserScreen(browser) } }
+        setContent {
+            val label = browser.snapshot?.label ?: "hyperb"
+            LaunchedEffect(label) {
+                @Suppress("DEPRECATION")
+                setTaskDescription(ActivityManager.TaskDescription(label))
+            }
+            HyperbTheme { BrowserScreen(browser) }
+        }
     }
 
-    /** With `singleTask`, links that arrive while the app runs come here. */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        openLink(intent)
+    /** Other windows may have changed the history and favorites. */
+    override fun onResume() {
+        super.onResume()
+        browser.loadLibrary()
     }
 
-    private fun openLink(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_VIEW) return
-        intent.dataString?.let { browser.navigate(it, link = true) }
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        browser.snapshot?.let { outState.putString(ADDRESS, it.address) }
     }
 
     override fun onDestroy() {
         browser.session?.cancel()
         super.onDestroy()
     }
+
+    private companion object {
+        const val ADDRESS = "address"
+    }
 }
+
+/** A window for one link, in a task of its own (`documentLaunchMode="always"`). */
+class LinkActivity : MainActivity()
 
 /**
  * The address bar, the current session, and the history and favorites. All state is read and
@@ -139,14 +159,7 @@ class Browser : Host {
         session = s
         error = null
         snapshot = s.snapshot()
-        snapshot?.let {
-            address = it.address
-            try {
-                RustBridge.setSession(it.address)
-            } catch (e: RuntimeException) {
-                Log.e("hyperb", "session", e)
-            }
-        }
+        snapshot?.let { address = it.address }
         thread(name = "hyperb-session") {
             s.run { snap -> main.post { if (session === s) snapshot = snap } }
         }

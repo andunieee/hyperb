@@ -10,12 +10,20 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|density|uiMode"
             android:windowSoftInputMode="adjustResize"
-            android:launchMode="singleTask"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+        <!-- Each link opens in a window of its own. -->
+        <activity
+            android:name=".LinkActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|density|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:documentLaunchMode="always"
+            android:autoRemoveFromRecents="true"
+            android:exported="true">
             <!-- hyperb:// and web+hyperb:// links; links cannot open local files. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
