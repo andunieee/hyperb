@@ -9,6 +9,8 @@
 //! running window. The system opens `hyperb://` and `web+hyperb://` links
 //! with `--links` (see `com.hyperb.app.desktop`), which refuses local files.
 
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod clamp;
 mod debug;
 mod library;
@@ -46,6 +48,7 @@ fn main() -> glib::ExitCode {
         let state = state.clone();
         app.connect_startup(move |_| {
             load_css();
+            set_app_icon();
             let identity = Identity::load_default().unwrap_or_else(|e| {
                 eprintln!("hyperb: cannot load identity ({e}); using a temporary one");
                 Identity::generate()
@@ -99,6 +102,16 @@ fn load_css() {
         &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
+}
+
+/// Names the window icon. An installed app finds it in the user's icon theme
+/// (`just desktop-install`); a dev run falls back to the copy in this crate.
+fn set_app_icon() {
+    if let Some(display) = gdk::Display::default() {
+        gtk::IconTheme::for_display(&display)
+            .add_search_path(concat!(env!("CARGO_MANIFEST_DIR"), "/icons"));
+    }
+    gtk::Window::set_default_icon_name(APP_ID);
 }
 
 struct Browser {

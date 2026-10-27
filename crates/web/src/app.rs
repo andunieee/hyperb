@@ -8,7 +8,7 @@
 #![recursion_limit = "256"]
 
 use leptos::prelude::*;
-use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
+use leptos_meta::{provide_meta_context, Link, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
     StaticSegment,
@@ -54,6 +54,7 @@ pub fn App() -> impl IntoView {
     view! {
         <Stylesheet id="leptos" href="/pkg/hyperb-web.css"/>
         <Title text="hyperb"/>
+        <Link rel="icon" type_="image/svg+xml" href="/icon.svg"/>
         <Router>
             <Routes fallback=|| "Not found.">
                 <Route path=StaticSegment("") view=Home/>

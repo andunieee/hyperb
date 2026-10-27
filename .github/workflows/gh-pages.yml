@@ -59,11 +59,11 @@ jobs:
           test -s target/site/index.html
           cp target/site/index.html target/site/404.html
           touch target/site/.nojekyll
-          sed -i "s#\"/pkg/#\"${BASE_PATH}/pkg/#g" target/site/index.html target/site/404.html
+          sed -i -e "s#\"/pkg/#\"${BASE_PATH}/pkg/#g" -e "s#\"/icon.svg#\"${BASE_PATH}/icon.svg#g" target/site/index.html target/site/404.html
           # The loader is called with root "" because the app was served from
           # "/"; on Pages it lives under BASE_PATH.
           sed -i "s#^(\"\", \"pkg\", \"hyperb-web\", \"hyperb-web\");#(\"${BASE_PATH}\", \"pkg\", \"hyperb-web\", \"hyperb-web\");#" target/site/index.html target/site/404.html
-          rm -f target/site/pkg/*.d.ts
+          rm -f target/site/pkg/*.d.ts target/site/icon.png
 
       - name: List site contents
         run: find target/site -type f

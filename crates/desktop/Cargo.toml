@@ -15,3 +15,6 @@ glib = "0.21"
 base64 = "0.22"
 percent-encoding = "2"
 url = "2"
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"

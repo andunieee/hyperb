@@ -19,6 +19,9 @@ desktop-install:
     apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
     install -Dm755 "$target/release/hyperb-desktop" "$bin"
     mkdir -p "$apps"
+    icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
+    install -Dm644 assets/icon.svg "$icons/com.hyperb.app.svg"
+    gtk-update-icon-cache -q -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
     sed "s#^Exec=hyperb-desktop #Exec=$bin #" crates/desktop/com.hyperb.app.desktop > "$apps/com.hyperb.app.desktop"
     update-desktop-database "$apps" 2>/dev/null || true
     xdg-mime default com.hyperb.app.desktop x-scheme-handler/hyperb x-scheme-handler/web+hyperb
