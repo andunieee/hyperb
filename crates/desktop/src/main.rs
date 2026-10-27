@@ -297,18 +297,17 @@ impl Browser {
         self.library.save_session(session);
     }
 
-    fn close_tab(&self, t: &Rc<Tab>) {
+    fn close_tab(self: &Rc<Self>, t: &Rc<Tab>) {
         self.tabs.borrow_mut().retain(|x| !Rc::ptr_eq(x, t));
         if let Some(i) = self.notebook.page_num(&t.page) {
             self.notebook.remove_page(Some(i));
         }
+        // Closing the last tab leaves an empty one; only closing the window
+        // quits.
         if self.tabs.borrow().is_empty() {
-            // Keep the session as it was, so closing the last tab (or the
-            // window) still reopens what was open.
-            self.window.close();
-        } else {
-            self.save_session();
+            self.add_tab(None, false);
         }
+        self.save_session();
     }
 
     fn current(&self) -> Option<Rc<Tab>> {
