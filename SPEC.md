@@ -14,8 +14,8 @@ also as wasm modules (`/<app>.wasm`), and prints their addresses.
 ## 1. Addresses
 
 ```
-hyperb://<authority>/<path>?<query>
-hyperb:///<file path>.wasm#<route>
+hyperb://<authority>/<path>#<params>
+hyperb:///<file path>.wasm#<params>
 ```
 
 A single scheme, `hyperb`, covers every kind of session. The renderer picks
@@ -63,28 +63,27 @@ at that URL. The transport scheme is:
 
 An HTTP address whose path ends in `.wasm` (case-insensitive) is not a server:
 the renderer downloads the file (at most 64 MiB) and runs it locally as in
-section 4. The fragment is the route, as for local files. The transport
-scheme is chosen as in 1.2. Remote wasm sessions are never shown as secure
+section 4. The fragment holds the session parameters (section 1.8), as for
+every address. The transport scheme is chosen as in 1.2. Remote wasm sessions are never shown as secure
 (section 1.6).
 
 Renderers may keep the module of an app the user marked as a favorite and
 run it from that copy, without the network; they download it again in the
 background on each session, so the next one gets any update. The copy is
-keyed by the address without the fragment, so every route shares it.
+keyed by the address without the fragment, so every set of parameters shares
+it.
 
 ### 1.4 Iroh addresses
 
-`hyperb://<endpoint-id>[/path][?query]`, where `<endpoint-id>` is the
+`hyperb://<endpoint-id>[/path][#params]`, where `<endpoint-id>` is the
 server's iroh endpoint id (its ed25519 public key) in 64 hex characters.
-There is no port. The path and query select the app (section 3).
+There is no port and no query: the path selects the app (section 3).
 
 ### 1.5 Local wasm addresses
 
-`hyperb:///<absolute path to a .wasm file>[#<route>]`. The authority is empty,
+`hyperb:///<absolute path to a .wasm file>[#params]`. The authority is empty,
 as in `file:///`. The path is percent-decoded to get the file; it must not end
-in `/`. The optional fragment is the route inside the app, like the path of a
-remote address (it is not sent anywhere, so it cannot be confused with the
-file path).
+in `/`. The optional fragment holds the session parameters (section 1.8).
 
 For safety, renderers should open local wasm addresses only when the user
 enters them (address bar, file picker, command line, their own history and
@@ -101,7 +100,7 @@ and use that to open the session and to show the tab:
 | `hyperb://example.com/app`    | `https://example.com/app`       |
 | `hyperb://localhost:9001/app` | `http://localhost:9001/app`     |
 | `hyperb://<64 hex>/app`       | `iroh://<64 hex lowercase>/app` |
-| `hyperb:///opt/a.wasm#/menu`  | `wasm:///opt/a.wasm#/menu`      |
+| `hyperb:///opt/a.wasm#a=1`    | `wasm:///opt/a.wasm#a=1`        |
 
 Renderers show a session as secure when nobody on the network can read or
 alter it and no code from a remote party runs on this machine:
@@ -132,6 +131,35 @@ The terminal renderer is not a handler: it runs the one address it is given.
 An address that comes from a link must have a scheme, and must not be a
 local wasm address (`address::from_link`).
 
+### 1.8 Session parameters
+
+An app can be opened with parameters of any kind, such as a room to join or a
+session to resume. They are not part of the path, so an address names the same
+app whatever its parameters are. They go in the fragment of the address, as a
+list of `key=value` pairs joined by `&`:
+
+```
+hyperb://example.com/restaurant#room=abc&table=4
+```
+
+- Keys and values are strings, percent-decoded as UTF-8. A value may be empty.
+  Anything richer is up to the app.
+- A pair without `=` (so a bare `#/menu`) or with an empty key, an empty pair (`a=1&&b=2`), a
+  repeated key and a value that is not UTF-8 make the address invalid.
+- An empty fragment is the same as none.
+
+The fragment is never sent to a server, in an HTTP request or in the ALPN of
+an iroh session. The renderer reads the parameters when it opens the session
+and sends them once, in the `hello` (section 5); none are sent after that. A
+`hello` with no parameters is `hello {}`, with them
+`hello {"params":{"room":"abc","table":"4"}}`. Parameters are not signals:
+the app receives them apart from the signals, and only on `hello`.
+
+Query strings (`?query`) have no meaning in the hyperb protocol. An HTTP
+address keeps its query in the request URL as it is, since it belongs to the
+HTTP server (and is part of the URL of a remote wasm module), but renderers
+send it nowhere else, and an iroh address cannot have one.
+
 ## 2. HTTP session
 
 Implemented. See the module documentation of `crates/core/src/http.rs`:
@@ -144,8 +172,8 @@ line `tag json` is one SSE event named `tag` with the JSON as data.
 ## 3. Iroh session
 
 1. The renderer connects to the endpoint id with the ALPN
-   `hyperb/0<path><?query>`: `hyperb/0` followed by the address's path
-   (nothing for the root path) and its query, e.g. `hyperb/0/restaurant`. An
+   `hyperb/0<path>`: `hyperb/0` followed by the address's path
+   (nothing for the root path), e.g. `hyperb/0/restaurant`. An
    ALPN is at most 255 bytes, so longer addresses are rejected. Servers list
    the ALPNs of the apps they serve when binding their endpoint; an unknown
    ALPN fails the handshake. Iroh's discovery and relays find the server.
@@ -198,7 +226,8 @@ freezes the page.
 ## 5. Sessions in the renderer
 
 Whatever the kind, a session is the `Connection` of `crates/core/src/net`:
-after `Event::Open` the renderer sends `hello`, lines from the app arrive as
+after `Event::Open` the renderer sends `hello` with the parameters of the
+address (section 1.8), lines from the app arrive as
 `Event::Data`, and `Event::Closed(reason)` ends it. A renderer that cannot
 run a kind of session (for example the browser build cannot read local files)
 closes it with a descriptive reason.

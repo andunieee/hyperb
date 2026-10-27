@@ -11,7 +11,8 @@
 //! on the server and shows itself through signals.
 
 use super::common::group;
-use hypereffect::{cel, json, ui, Action, App, Handler, Map, Outbox, Value};
+use hypereffect::{cel, json, ui, Action, App, Handler, Outbox, Value};
+use std::collections::BTreeMap;
 
 /// Keys in display order, by row: code, label, variant.
 const KEY_ROWS: &[&[(&str, &str, &str)]] = &[
@@ -647,7 +648,7 @@ impl Finance {
 }
 
 impl App for Finance {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         self.decimals = 2;
         out.signal(json!({"settings": {"decimals": 2}}));
         self.show(out);

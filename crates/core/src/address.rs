@@ -6,15 +6,25 @@
 //!
 //! - `http` / `https`: HTTP with SSE.
 //! - `iroh`: an iroh session; the host is the endpoint id (64 hex chars).
-//! - `wasm`: a local wasm app; the path is the file, the fragment the route.
+//! - `wasm`: a local wasm app; the path is the file.
+//!
+//! The fragment of every kind of address holds the session parameters the
+//! app receives in the `hello`: see [`params`].
 //!
 //! The transport scheme is internal. Address bars display the user-facing
 //! `hyperb://` form instead, produced by [`hyperb`]; what users type in may
 //! always be fed back in, and normalize accepts transports schemes too.
 
+use std::collections::BTreeMap;
 use url::{Host, Url};
 
 pub fn normalize(input: &str) -> Result<Url, String> {
+    let mut url = normalize_address(input)?;
+    canonical_fragment(&mut url)?;
+    Ok(url)
+}
+
+fn normalize_address(input: &str) -> Result<Url, String> {
     let input = input.trim();
     if input.is_empty() {
         return Err("empty address".into());
@@ -58,9 +68,12 @@ pub fn normalize(input: &str) -> Result<Url, String> {
             {
                 return Err("an iroh address has no port".into());
             }
+            if url.query().is_some() {
+                return Err("an iroh address has no query".into());
+            }
             let mut out = format!("iroh://{}{}", d.to_ascii_lowercase(), url.path());
-            if let Some(q) = url.query() {
-                out.push_str(&format!("?{q}"));
+            if let Some(f) = url.fragment() {
+                out.push_str(&format!("#{f}"));
             }
             return parse(&out);
         }
@@ -88,8 +101,8 @@ pub fn from_link(input: &str) -> Result<Url, String> {
 }
 
 fn wasm(path: &str) -> Result<Url, String> {
-    let (path, route) = match path.split_once('#') {
-        Some((p, r)) => (p, Some(r)),
+    let (path, fragment) = match path.split_once('#') {
+        Some((p, f)) => (p, Some(f)),
         None => (path, None),
     };
     let path = match path.strip_prefix("~/") {
@@ -104,8 +117,46 @@ fn wasm(path: &str) -> Result<Url, String> {
     }
     let mut url = Url::parse("wasm:///").map_err(|e| e.to_string())?;
     url.set_path(&path);
-    url.set_fragment(route);
+    url.set_fragment(fragment);
     Ok(url)
+}
+
+/// Checks that the fragment of `url` is a list of parameters
+/// (`SPEC.md`, section 1.8), and removes it if it is empty.
+fn canonical_fragment(url: &mut Url) -> Result<(), String> {
+    match url.fragment().filter(|f| !f.is_empty()) {
+        Some(fragment) => parse_params(fragment).map(drop),
+        None => {
+            url.set_fragment(None);
+            Ok(())
+        }
+    }
+}
+
+fn parse_params(fragment: &str) -> Result<BTreeMap<String, String>, String> {
+    let mut params = BTreeMap::new();
+    for pair in fragment.split('&') {
+        let (key, value) = pair
+            .split_once('=')
+            .filter(|(k, _)| !k.is_empty())
+            .ok_or_else(|| format!("'{pair}' is not a key=value parameter"))?;
+        let decode = |s: &str| {
+            String::from_utf8(percent_decode(s)).map_err(|_| "a parameter is not valid UTF-8")
+        };
+        let key = decode(key)?;
+        if params.insert(key.clone(), decode(value)?).is_some() {
+            return Err(format!("the parameter '{key}' is repeated"));
+        }
+    }
+    Ok(params)
+}
+
+/// The session parameters of a normalized address: the pairs of its
+/// fragment, which the renderer sends in the `hello`. None if it has none.
+pub fn params(url: &Url) -> BTreeMap<String, String> {
+    url.fragment()
+        .and_then(|f| parse_params(f).ok())
+        .unwrap_or_default()
 }
 
 /// A short label for a tab: the host, with the port and path if it has them.
@@ -138,19 +189,13 @@ pub fn label(url: &Url) -> String {
 /// differently (`hyperb+http` on an https-defaulting host and vice versa).
 /// Feeding the result into [`normalize`] gives back `url`.
 pub fn hyperb(url: &Url) -> String {
-    let query = url.query().map(|q| format!("?{q}")).unwrap_or_default();
+    let fragment = url.fragment().map(|f| format!("#{f}")).unwrap_or_default();
     match url.scheme() {
         "iroh" => {
             let id = url.host_str().unwrap_or_default();
-            format!("hyperb://{id}{}{query}", url.path())
+            format!("hyperb://{id}{}{fragment}", url.path())
         }
-        "wasm" => {
-            let mut out = format!("hyperb://{}", url.path());
-            if let Some(route) = url.fragment() {
-                out.push_str(&format!("#{route}"));
-            }
-            out
-        }
+        "wasm" => format!("hyperb://{}{fragment}", url.path()),
         scheme => {
             let prefix = match (scheme, url.host()) {
                 ("http", Some(h)) if !is_plain_host(&h) => "hyperb+http",
@@ -212,25 +257,23 @@ pub fn is_secure(url: &Url) -> bool {
 pub const IROH_ALPN: &str = "hyperb/0";
 
 /// The ALPN an iroh session at `url` offers: [`IROH_ALPN`] followed by the
-/// path and query, e.g. `hyperb/0/restaurant`. The root path adds nothing.
+/// path, e.g. `hyperb/0/restaurant`. The root path adds nothing.
 pub fn iroh_alpn(url: &Url) -> Result<Vec<u8>, String> {
     let path = if url.path() == "/" { "" } else { url.path() };
-    let query = url.query().map(|q| format!("?{q}")).unwrap_or_default();
-    let alpn = format!("{IROH_ALPN}{path}{query}").into_bytes();
+    let alpn = format!("{IROH_ALPN}{path}").into_bytes();
     if alpn.len() > 255 {
         return Err("the address is too long for an iroh session".into());
     }
     Ok(alpn)
 }
 
-/// The path and query (starting with `/`) an ALPN offered by
+/// The path (starting with `/`) an ALPN offered by
 /// [`iroh_alpn`] stands for, or `None` if it is not a hyperb ALPN.
 pub fn iroh_alpn_path(alpn: &[u8]) -> Option<String> {
     let rest = std::str::from_utf8(alpn).ok()?.strip_prefix(IROH_ALPN)?;
     match rest.chars().next() {
         None => Some("/".into()),
         Some('/') => Some(rest.into()),
-        Some('?') => Some(format!("/{rest}")),
         Some(_) => None,
     }
 }
@@ -332,10 +375,8 @@ mod tests {
     fn iroh() {
         let id = ID.to_ascii_lowercase();
         assert_eq!(n(&format!("hyperb://{ID}")), format!("iroh://{id}/"));
-        assert_eq!(
-            n(&format!("hyperb://{id}/a/b?x=1")),
-            format!("iroh://{id}/a/b?x=1")
-        );
+        assert_eq!(n(&format!("hyperb://{id}/a/b")), format!("iroh://{id}/a/b"));
+        assert!(normalize(&format!("hyperb://{id}/a?x=1")).is_err());
         assert_eq!(n(&id), format!("iroh://{id}/"));
         assert!(normalize(&format!("hyperb+https://{id}")).is_err());
         assert!(normalize(&format!("hyperb://{id}:80")).is_err());
@@ -349,16 +390,48 @@ mod tests {
     #[test]
     fn wasm() {
         assert_eq!(n("hyperb:///opt/apps/a.wasm"), "wasm:///opt/apps/a.wasm");
-        assert_eq!(n("/opt/apps/a.wasm#/menu"), "wasm:///opt/apps/a.wasm#/menu");
-        let url = normalize("hyperb:///opt/my apps/a.wasm#/x").unwrap();
+        assert_eq!(n("/opt/apps/a.wasm#a=1"), "wasm:///opt/apps/a.wasm#a=1");
+        let url = normalize("hyperb:///opt/my apps/a.wasm#a=x").unwrap();
         assert_eq!(
             wasm_path(&url).unwrap().to_str(),
             Some("/opt/my apps/a.wasm")
         );
-        assert_eq!(url.fragment(), Some("/x"));
+        assert_eq!(url.fragment(), Some("a=x"));
         assert!(normalize("hyperb:///opt/apps/").is_err());
         assert!(normalize("hyperb+http:///opt/a.wasm").is_err());
         assert_eq!(wasm_path(&normalize("localhost").unwrap()), None);
+    }
+
+    #[test]
+    fn fragment_params() {
+        let p = |s: &str| params(&normalize(s).unwrap());
+        let map = |kv: &[(&str, &str)]| {
+            kv.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect::<BTreeMap<_, _>>()
+        };
+        assert_eq!(p("example.com/a"), map(&[]));
+        assert_eq!(p("example.com/a#"), map(&[]));
+        assert_eq!(n("example.com/a#"), "https://example.com/a");
+        assert_eq!(
+            p("example.com/a#room=abc&table=4"),
+            map(&[("room", "abc"), ("table", "4")])
+        );
+        assert_eq!(
+            p("example.com/a#q=a%26b%3Dc&e="),
+            map(&[("q", "a&b=c"), ("e", "")])
+        );
+        assert_eq!(p("/a.wasm#path=/menu"), map(&[("path", "/menu")]));
+        assert!(normalize("/a.wasm#/menu").is_err());
+        assert_eq!(
+            p(&format!("hyperb://{ID}#room=abc")),
+            map(&[("room", "abc")])
+        );
+        assert!(normalize("example.com#a=1&a=2").is_err());
+        assert!(normalize("example.com#a=1&b").is_err());
+        assert!(normalize("example.com#=1").is_err());
+        assert!(normalize("example.com#a=1&&b=2").is_err());
+        assert!(normalize("example.com#a=%ff").is_err());
     }
 
     #[test]
@@ -395,6 +468,7 @@ mod tests {
         assert_eq!(d("https://example.com/a"), "hyperb://example.com/a");
         assert_eq!(d("hyperb://localhost:9001"), "hyperb://localhost:9001/");
         assert_eq!(d("http://example.com"), "hyperb+http://example.com/");
+        // An http query is the server's own, and is kept as it is.
         assert_eq!(
             d("hyperb://localhost:9001/a.wasm?x=1"),
             "hyperb://localhost:9001/a.wasm?x=1"
@@ -404,10 +478,7 @@ mod tests {
             d(&format!("hyperb://{ID}/menu")),
             format!("hyperb://{id}/menu")
         );
-        assert_eq!(
-            d("/opt/apps/a.wasm#/menu"),
-            "hyperb:///opt/apps/a.wasm#/menu"
-        );
+        assert_eq!(d("/opt/apps/a.wasm#a=1"), "hyperb:///opt/apps/a.wasm#a=1");
         // Display addresses round-trip through normalize, and so do the
         // transport schemes, which normalize also accepts on input.
         for s in [
@@ -417,9 +488,10 @@ mod tests {
             "http://example.com/x?a=1",
             "hyperb+http://example.com/x",
             "https://localhost:9001",
-            &format!("hyperb://{ID}/menu?x=1"),
+            &format!("hyperb://{ID}/menu#room=abc"),
             "wasm:///opt/apps/a.wasm",
-            "wasm:///opt/apps/a.wasm#/menu",
+            "wasm:///opt/apps/a.wasm#a=1&room=abc",
+            "https://example.com/a?x=1#room=abc",
         ] {
             let url = normalize(s).unwrap();
             assert_eq!(normalize(&hyperb(&url)), Ok(url.clone()), "{s}");
@@ -431,17 +503,18 @@ mod tests {
     fn kinds_and_alpn() {
         let k = |s: &str| kind(&normalize(s).unwrap());
         assert_eq!(k("example.com/app"), Kind::Http);
-        assert_eq!(k("example.com/app.WASM#/x"), Kind::RemoteWasm);
+        assert_eq!(k("example.com/app.WASM#a=1"), Kind::RemoteWasm);
         assert_eq!(k("localhost:80/a.wasm"), Kind::RemoteWasm);
         assert_eq!(k(&format!("hyperb://{ID}")), Kind::Iroh);
         assert_eq!(k("/a.wasm"), Kind::LocalWasm);
         let alpn = |p: &str| iroh_alpn(&normalize(&format!("hyperb://{ID}{p}")).unwrap()).unwrap();
         assert_eq!(alpn(""), b"hyperb/0");
         assert_eq!(alpn("/restaurant"), b"hyperb/0/restaurant");
-        assert_eq!(alpn("/?a=1"), b"hyperb/0?a=1");
+        // The parameters are in the hello, not in the ALPN.
+        assert_eq!(alpn("/a#room=abc"), b"hyperb/0/a");
         assert_eq!(iroh_alpn_path(b"hyperb/0").as_deref(), Some("/"));
-        assert_eq!(iroh_alpn_path(b"hyperb/0/a/b?x").as_deref(), Some("/a/b?x"));
-        assert_eq!(iroh_alpn_path(b"hyperb/0?a=1").as_deref(), Some("/?a=1"));
+        assert_eq!(iroh_alpn_path(b"hyperb/0/a/b").as_deref(), Some("/a/b"));
+        assert_eq!(iroh_alpn_path(b"hyperb/0?a=1"), None);
         assert_eq!(iroh_alpn_path(b"hyperb/01"), None);
         assert_eq!(iroh_alpn_path(b"other"), None);
         let long = format!("hyperb://{ID}/{}", "a".repeat(300));

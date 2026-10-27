@@ -12,10 +12,11 @@
 //! meeting it has open on its tick, so answers from other people show up
 //! within a second or two.
 
-use super::common::{feedback, key, text};
+use super::common::{feedback, key, param_key, text};
 use super::store;
 use hyperb_core::identity::PublicKey;
 use hypereffect::{cel, json, ui, Action, App, Element, Handler, Map, Outbox, Value};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
@@ -461,8 +462,8 @@ impl Meet {
 }
 
 impl App for Meet {
-    fn hello(&mut self, out: &mut Outbox, signals: &Map<String, Value>) {
-        let key = key(signals);
+    fn hello(&mut self, out: &mut Outbox, params: &BTreeMap<String, String>) {
+        let key = param_key(params);
         self.viewer = key;
         let name = key.map(|k| PEOPLE.snapshot(&k).name).unwrap_or_default();
         out.signal(json!({

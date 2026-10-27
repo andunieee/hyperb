@@ -8,6 +8,7 @@
 use super::store;
 use hyperb_core::identity::PublicKey;
 use hypereffect::{json, ui, App, Handler, Map, Outbox, Value};
+use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 /// The guests remembered between sessions. Read only through its methods;
@@ -45,6 +46,10 @@ fn key(signals: &Map<String, Value>) -> Option<PublicKey> {
     signals.get(super::KEY_SIGNAL)?.as_str()?.parse().ok()
 }
 
+fn param_key(params: &BTreeMap<String, String>) -> Option<PublicKey> {
+    params.get(super::KEY_SIGNAL)?.parse().ok()
+}
+
 /// A select menu in the component's shape.
 fn menu(values: &[&str]) -> Vec<Value> {
     values
@@ -54,8 +59,8 @@ fn menu(values: &[&str]) -> Vec<Value> {
 }
 
 impl App for Restaurant {
-    fn hello(&mut self, out: &mut Outbox, signals: &Map<String, Value>) {
-        let remembered = key(signals)
+    fn hello(&mut self, out: &mut Outbox, params: &BTreeMap<String, String>) {
+        let remembered = param_key(params)
             .map(|k| GUESTS.snapshot(&k))
             .unwrap_or_default();
         // Seed the form with the remembered profile.
@@ -247,7 +252,7 @@ mod tests {
             client: hypereffect::client::Client::new(),
             server: hypereffect::Server::new(),
         };
-        // As the transport does: inject the key into the hello's signals.
+        // As the transport does: inject the key into the hello's params.
         let hello = l.client.hello();
         l.server.receive(crate::with_key(&hello, key).as_bytes());
         l.pump();

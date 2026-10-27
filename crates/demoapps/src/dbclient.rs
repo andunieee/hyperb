@@ -7,8 +7,9 @@
 //! aligned text and paged; past queries can be recalled.
 
 use super::common::menu;
-use hypereffect::{cel, json, ui, Action, App, Handler, Map, Outbox, Value};
+use hypereffect::{cel, json, ui, Action, App, Handler, Outbox, Value};
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 const PAGE: usize = 10;
@@ -1544,7 +1545,7 @@ impl DbClient {
 }
 
 impl App for DbClient {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         self.db = database();
         out.signal(json!({
             "form": {"sql": "SELECT * FROM customers LIMIT 20", "table": "customers", "example": ""},
@@ -1775,7 +1776,10 @@ struct Stopwatch(#[cfg(not(target_arch = "wasm32"))] std::time::Instant);
 
 impl Stopwatch {
     fn start() -> Self {
-        Stopwatch(#[cfg(not(target_arch = "wasm32"))] std::time::Instant::now())
+        Stopwatch(
+            #[cfg(not(target_arch = "wasm32"))]
+            std::time::Instant::now(),
+        )
     }
 
     fn ms(&self) -> Option<f64> {

@@ -23,6 +23,7 @@ mod wasm;
 use crate::address::{self, Kind};
 use crate::identity::Identity;
 use futures_util::future::{AbortHandle, Abortable};
+use std::collections::BTreeMap;
 use std::future::Future;
 use url::Url;
 
@@ -37,6 +38,7 @@ pub enum Event {
 }
 
 pub struct Connection {
+    params: BTreeMap<String, String>,
     out: async_channel::Sender<String>,
     events: async_channel::Receiver<Event>,
     abort: AbortHandle,
@@ -59,6 +61,7 @@ impl Connection {
         let (out, out_rx) = async_channel::unbounded();
         let (ev_tx, events) = async_channel::unbounded();
         let (abort, reg) = AbortHandle::new_pair();
+        let params = address::params(url);
         let url = url.clone();
         spawn(async move {
             let run = async {
@@ -86,7 +89,18 @@ impl Connection {
                 let _ = ev_tx.send(Event::Closed(result.err())).await;
             }
         });
-        Connection { out, events, abort }
+        Connection {
+            params,
+            out,
+            events,
+            abort,
+        }
+    }
+
+    /// The session parameters of the address, which the `hello` carries
+    /// (`Client::hello_with`).
+    pub fn params(&self) -> &BTreeMap<String, String> {
+        &self.params
     }
 
     /// Queues a line to send. Ignored once the connection has closed.
@@ -128,7 +142,9 @@ pub async fn fetch_module(url: &Url) -> Result<Vec<u8>, String> {
     spawn(async move {
         let _ = tx.send(download(&url).await).await;
     });
-    rx.recv().await.map_err(|_| "the download was cancelled".to_string())?
+    rx.recv()
+        .await
+        .map_err(|_| "the download was cancelled".to_string())?
 }
 
 async fn download(url: &Url) -> Result<Vec<u8>, String> {

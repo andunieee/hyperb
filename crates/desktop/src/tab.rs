@@ -128,7 +128,11 @@ impl Tab {
             popover_scroll.set_propagate_natural_height(true);
             popover_scroll.set_max_content_height(560);
             popover_scroll.set_size_request(420, -1);
-            popover_scroll.set_child(Some(&library::view(&library, 50, open(Some(popover.clone())))));
+            popover_scroll.set_child(Some(&library::view(
+                &library,
+                50,
+                open(Some(popover.clone())),
+            )));
             popover.set_child(Some(&popover_scroll));
             library_button.set_popover(Some(&popover));
 
@@ -157,7 +161,10 @@ impl Tab {
 
             let content = gtk::Stack::new();
             content.set_vexpand(true);
-            content.add_named(&welcome(library::view(&library, 12, open(None))), Some("welcome"));
+            content.add_named(
+                &welcome(library::view(&library, 12, open(None))),
+                Some("welcome"),
+            );
             content.add_named(&overlay, Some("page"));
             content.set_visible_child_name("welcome");
 
@@ -273,7 +280,8 @@ impl Tab {
             Ok(url) => {
                 self.url_entry.set_text(&address::hyperb(&url));
                 self.title.set_text(&address::label(&url));
-                self.title.set_tooltip_text(Some(address::hyperb(&url).as_str()));
+                self.title
+                    .set_tooltip_text(Some(address::hyperb(&url).as_str()));
                 self.content.grab_focus();
                 self.library.visit(&url);
                 self.connect(url);
@@ -334,7 +342,12 @@ impl Tab {
         let s = &mut *s;
         match ev {
             Event::Open => {
-                let hello = s.client.hello();
+                let params = s
+                    .conn
+                    .as_ref()
+                    .map(|c| c.params().clone())
+                    .unwrap_or_default();
+                let hello = s.client.hello_with(&params);
                 if let Some(c) = &s.conn {
                     self.debug.log(Dir::Sent, &hello);
                     c.send(hello);
@@ -371,7 +384,11 @@ impl Tab {
         let on = url.as_ref().is_some_and(|u| self.library.is_favorite(u));
         self.star.set_sensitive(url.is_some());
         self.star.set_active(on);
-        self.star.set_icon_name(if on { "starred-symbolic" } else { "non-starred-symbolic" });
+        self.star.set_icon_name(if on {
+            "starred-symbolic"
+        } else {
+            "non-starred-symbolic"
+        });
         self.star.set_tooltip_text(Some(if on {
             "Remove from favorites"
         } else {

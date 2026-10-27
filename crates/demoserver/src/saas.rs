@@ -8,11 +8,12 @@
 //! reconnecting, and every change is stamped with the key in the audit log.
 
 use super::chart::{draw, Point, PALETTE};
-use super::common::{group, key, menu, number, replace, text};
+use super::common::{group, menu, number, param_key, replace, text};
 use super::img;
 use super::store;
 use hyperb_core::identity::PublicKey;
 use hypereffect::{cel, json, ui, Action, App, Element, Handler, Map, Outbox, Value};
+use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 pub(crate) static WORKSPACES: LazyLock<store::Memory<Workspace>> =
@@ -353,8 +354,8 @@ impl Saas {
 }
 
 impl App for Saas {
-    fn hello(&mut self, out: &mut Outbox, signals: &Map<String, Value>) {
-        self.key = key(signals);
+    fn hello(&mut self, out: &mut Outbox, params: &BTreeMap<String, String>) {
+        self.key = param_key(params);
         self.ws = self
             .key
             .map(|k| WORKSPACES.snapshot(&k))

@@ -5,7 +5,8 @@
 //! the number of unique words and the five most used words. This one holds
 //! no memory between sessions.
 
-use hypereffect::{json, ui, Action, App, Handler, Map, Outbox, Value};
+use hypereffect::{json, ui, Action, App, Handler, Outbox, Value};
+use std::collections::BTreeMap;
 
 /// How many top words to rank.
 const TOP: usize = 5;
@@ -39,7 +40,7 @@ fn analyze(text: &str) -> Value {
 }
 
 impl App for TextStats {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         out.signal(json!({
             "stats": {"words": 0, "chars": 0, "unique": 0, "top": []},
             "feedback": {"kind": "info", "text": ""},

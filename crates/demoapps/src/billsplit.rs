@@ -8,6 +8,7 @@
 
 use super::common::{money, parse_cents};
 use hypereffect::{cel, json, ui, Action, App, Handler, Map, Outbox, Value};
+use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub struct BillSplit {
@@ -262,7 +263,7 @@ impl BillSplit {
 }
 
 impl App for BillSplit {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         out.signal(json!({"total": ""}));
         out.element(ui::column("main").gap("large"));
         out.element(

@@ -35,7 +35,6 @@ mod smarthome;
 mod store;
 mod therapist;
 
-use demoapps::{billsplit, chart, dbclient, finance, img, minecraft, qr, textstats};
 use axum::extract::State;
 use axum::http::{header, HeaderMap, HeaderName, Method, StatusCode, Uri};
 use axum::response::sse::{self, KeepAlive, Sse};
@@ -43,6 +42,7 @@ use axum::response::Html;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use demoapps::{billsplit, chart, dbclient, finance, img, minecraft, qr, textstats};
 use futures_util::stream::{self, Stream, StreamExt};
 use hyperb_core::http::{line_to_event, KEY, SESSION, SIGNATURE};
 use hyperb_core::identity::{Identity, PublicKey};
@@ -115,7 +115,10 @@ async fn main() {
     let wasm_dir = std::env::var_os("HYPERB_WASM_DIR").unwrap_or_else(|| "wasm-apps".into());
     catalog.load_wasm(wasm_dir.as_ref());
     if catalog.wasm.is_empty() {
-        eprintln!("no wasm apps in {} (`just wasm-apps` builds them)", wasm_dir.to_string_lossy());
+        eprintln!(
+            "no wasm apps in {} (`just wasm-apps` builds them)",
+            wasm_dir.to_string_lossy()
+        );
     }
     match hyperb_core::identity::default_path()
         .map(|p| p.with_file_name("demoserver-iroh"))
@@ -194,7 +197,10 @@ async fn post(
 async fn stream(State(sessions): State<Sessions>, uri: Uri, headers: HeaderMap) -> Response {
     if let Some(name) = uri.path().trim_matches('/').strip_suffix(".wasm") {
         return match catalog::CATALOG.get().and_then(|c| c.wasm.get(name)) {
-            Some(wasm) => ([(header::CONTENT_TYPE, "application/wasm")], wasm.bytes.clone())
+            Some(wasm) => (
+                [(header::CONTENT_TYPE, "application/wasm")],
+                wasm.bytes.clone(),
+            )
                 .into_response(),
             None => (StatusCode::NOT_FOUND, "no wasm app here").into_response(),
         };
@@ -205,7 +211,10 @@ async fn stream(State(sessions): State<Sessions>, uri: Uri, headers: HeaderMap) 
         .is_some_and(|a| a.contains("text/event-stream"));
     if !wants_events && app_at(&uri).is_some() {
         let host = header_str(&headers, header::HOST.as_str()).unwrap_or("localhost:9001");
-        let page = catalog::CATALOG.get().map(|c| c.page(host)).unwrap_or_default();
+        let page = catalog::CATALOG
+            .get()
+            .map(|c| c.page(host))
+            .unwrap_or_default();
         return Html(page).into_response();
     }
     let Some(app) = app_at(&uri) else {
@@ -268,12 +277,7 @@ fn authorize<'a>(
 }
 
 /// Runs an instance of `app` until its stream closes.
-async fn start(
-    app: &str,
-    hello: String,
-    key: PublicKey,
-    cmds: mpsc::UnboundedReceiver<Cmd>,
-) {
+async fn start(app: &str, hello: String, key: PublicKey, cmds: mpsc::UnboundedReceiver<Cmd>) {
     match app {
         "restaurant" => run::<restaurant::Restaurant>(hello, key, cmds).await,
         "therapist" => run::<therapist::Therapist>(hello, key, cmds).await,
@@ -339,11 +343,12 @@ async fn run<A: App + Default>(
     server.close();
 }
 
-/// Injects the session key into a hello's or action's signals as
+/// Injects the session key into a hello's params or an action's signals as
 /// [`KEY_SIGNAL`], so the app knows whose session it is and can load the
-/// remembered profile. The renderer never sends the key in signals (it keeps
-/// `_`-prefixed signals local), so this is the only way the apps see it.
-/// Lines that are not hello or action lines pass through unchanged.
+/// remembered profile. The renderer never sends the key (it keeps
+/// `_`-prefixed signals local), and any `KEY_SIGNAL` param it sends is
+/// replaced, so this is the only way the apps see it. Lines that are not
+/// hello or action lines pass through unchanged.
 fn with_key(lines: &str, key: PublicKey) -> String {
     let mut out = String::with_capacity(lines.len());
     for line in lines.lines() {
@@ -363,11 +368,12 @@ fn line_with_key(line: &str, key: PublicKey) -> String {
     }
     let mut body = serde_json::from_str::<Value>(body).unwrap_or(Value::Null);
     if let Value::Object(ref mut body) = body {
-        let signals = body
-            .entry("signals")
+        let field = if tag == "hello" { "params" } else { "signals" };
+        let map = body
+            .entry(field)
             .or_insert_with(|| Value::Object(Default::default()));
-        if let Value::Object(signals) = signals {
-            signals.insert(KEY_SIGNAL.into(), key.to_string().into());
+        if let Value::Object(map) = map {
+            map.insert(KEY_SIGNAL.into(), key.to_string().into());
         }
     }
     format!("{tag} {body}")
@@ -448,11 +454,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn key_goes_into_hello_and_action_signals() {
+    fn key_goes_into_hello_params_and_action_signals() {
         let key = hyperb_core::identity::Identity::generate().public();
         assert_eq!(
-            with_key(r#"hello {"signals":{"page":"home"}}"#, key),
-            format!("hello {{\"signals\":{{\"page\":\"home\",\"__key\":\"{key}\"}}}}\n")
+            with_key(r#"hello {"params":{"page":"home"}}"#, key),
+            format!("hello {{\"params\":{{\"page\":\"home\",\"__key\":\"{key}\"}}}}\n")
         );
         assert_eq!(
             with_key(r#"action {"name":"x","signals":{"page":"home"}}"#, key),

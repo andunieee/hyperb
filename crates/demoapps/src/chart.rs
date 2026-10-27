@@ -7,7 +7,8 @@
 
 use super::common::{feedback, menu, text};
 use super::img::{self, text_width, Canvas, Rgb};
-use hypereffect::{cel, json, ui, Action, App, Handler, Map, Outbox, Value};
+use hypereffect::{cel, json, ui, Action, App, Handler, Outbox};
+use std::collections::BTreeMap;
 
 const W: i32 = 640;
 const H: i32 = 400;
@@ -149,12 +150,7 @@ fn centered(c: &mut Canvas, cx: i32, y: i32, scale: i32, s: &str, color: Rgb) {
     c.text(cx - text_width(s, scale) / 2, y, scale, s, color);
 }
 
-pub fn draw(
-    kind: &str,
-    title: &str,
-    points: &[Point],
-    tint: Rgb,
-) -> Result<Vec<u8>, String> {
+pub fn draw(kind: &str, title: &str, points: &[Point], tint: Rgb) -> Result<Vec<u8>, String> {
     let mut c = Canvas::new(W, H, BACKGROUND);
     if !title.is_empty() {
         centered(&mut c, W / 2, 14, 2, &shorten(title, 48), INK);
@@ -277,7 +273,7 @@ impl Chart {
 }
 
 impl App for Chart {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         let form =
             json!({"title": "Coffees per day", "data": SAMPLE, "kind": "bar", "color": "blue"});
         out.signal(json!({

@@ -8,7 +8,8 @@
 //! `running` signal.
 
 use super::common::number;
-use hypereffect::{cel, json, ui, Action, App, Handler, Map, Outbox, Value};
+use hypereffect::{cel, json, ui, Action, App, Handler, Outbox};
+use std::collections::BTreeMap;
 
 /// How often the countdown is refreshed while running.
 const TICK_MS: u32 = 250;
@@ -115,7 +116,7 @@ impl Pomodoro {
 }
 
 impl App for Pomodoro {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         self.minutes = [25.0, 5.0, 15.0];
         self.begin_stage(0);
         out.signal(json!({

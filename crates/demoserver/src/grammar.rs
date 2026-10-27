@@ -11,8 +11,9 @@ use harper_core::linting::{Lint, LintGroup, Linter, Suggestion};
 use harper_core::parsers::PlainEnglish;
 use harper_core::spell::FstDictionary;
 use harper_core::{Dialect, Document};
-use hypereffect::{cel, json, ui, Action, App, Element, Handler, Map, Outbox, Value};
+use hypereffect::{cel, json, ui, Action, App, Element, Handler, Outbox, Value};
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 /// The most problems listed, and suggestions offered for each.
@@ -161,7 +162,7 @@ impl Grammar {
 }
 
 impl App for Grammar {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         out.signal(json!({
             "form": {"text": SAMPLE, "dialect": "American"},
             "menu": {"dialects": menu(&[

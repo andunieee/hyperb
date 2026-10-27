@@ -93,8 +93,7 @@ impl Ctx {
             address::normalize(input)
         };
         let url = url.map_err(|e| format!("Invalid address: {e}"))?;
-        self.library
-            .set(store::update(|l, now| l.visit(&url, now)));
+        self.library.set(store::update(|l, now| l.visit(&url, now)));
         self.connect(url);
         Ok(())
     }
@@ -182,9 +181,13 @@ impl Ctx {
     fn handle(self, ev: Event) {
         match ev {
             Event::Open => {
+                let params = self
+                    .conn
+                    .with_value(|c| c.as_ref().map(|c| c.params().clone()))
+                    .unwrap_or_default();
                 let hello = self
                     .client
-                    .try_update_value(|c| c.hello())
+                    .try_update_value(|c| c.hello_with(&params))
                     .unwrap_or_default();
                 self.send(hello);
                 self.state.set(Some(State::Open));
@@ -533,7 +536,10 @@ fn Welcome(ctx: Ctx, open: Callback<String>) -> impl IntoView {
 #[component]
 fn LibraryView(ctx: Ctx, limit: usize, open: Callback<String>) -> impl IntoView {
     let favorites = move || ctx.library.with(|l| l.favorites.clone());
-    let history = move || ctx.library.with(|l| l.history.iter().take(limit).cloned().collect::<Vec<_>>());
+    let history = move || {
+        ctx.library
+            .with(|l| l.history.iter().take(limit).cloned().collect::<Vec<_>>())
+    };
     let unfavorite = Callback::new(move |a: String| {
         if let Ok(u) = address::normalize(&a) {
             ctx.set_favorite(&u, false);

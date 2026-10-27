@@ -5,8 +5,9 @@
 
 use super::common::{feedback, menu, number, text};
 use super::img;
-use hypereffect::{cel, json, ui, Action, App, Handler, Map, Outbox, Value};
+use hypereffect::{cel, json, ui, Action, App, Handler, Outbox, Value};
 use qrcode::{Color, EcLevel, QrCode};
+use std::collections::BTreeMap;
 
 /// Modules of white around the code, as the standard requires.
 const QUIET: usize = 4;
@@ -45,7 +46,7 @@ fn render(data: &str, ec: EcLevel, scale: usize) -> Result<(Vec<u8>, usize), Str
 }
 
 impl App for Qr {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         out.signal(json!({
             "form": {"text": "", "level": "M", "scale": 6},
             "menu": {"levels": menu(&[

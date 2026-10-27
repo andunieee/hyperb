@@ -97,7 +97,7 @@ impl Library {
     }
 
     /// Whether the module of `url` should be kept: it is a remote wasm app
-    /// and a favorite runs it (at any route).
+    /// and a favorite runs it (with any parameters).
     pub fn keeps_module(&self, url: &Url) -> bool {
         let Some(file) = module_file(url) else {
             return false;
@@ -124,8 +124,8 @@ impl Library {
 }
 
 /// The name a remote wasm app's module is kept under: the SHA-256 of its
-/// address without the route (the fragment), so every route of an app
-/// shares it, as hex with a `.wasm` extension. `None` for other sessions.
+/// address without the parameters (the fragment), so every set of parameters
+/// of an app shares it, as hex with a `.wasm` extension. `None` for other sessions.
 pub fn module_file(url: &Url) -> Option<String> {
     if address::kind(url) != Kind::RemoteWasm {
         return None;
@@ -363,12 +363,12 @@ mod tests {
     #[test]
     fn modules() {
         let mut l = Library::default();
-        let app = url("example.com/app.wasm#/menu");
+        let app = url("example.com/app.wasm#a=1");
         assert!(!l.keeps_module(&app));
         l.set_favorite(&app, true, 0);
         l.set_favorite(&url("example.com/server"), true, 0);
         l.set_favorite(&url("/opt/local.wasm"), true, 0);
-        // Every route of the app shares the module; other sessions have none.
+        // Every set of parameters of the app shares the module; other sessions have none.
         assert!(l.keeps_module(&url("example.com/app.wasm")));
         assert!(!l.keeps_module(&url("example.com/other.wasm")));
         assert!(!l.keeps_module(&url("example.com/server")));

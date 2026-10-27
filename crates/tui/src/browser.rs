@@ -126,7 +126,12 @@ impl Browser {
         }
         match ev {
             Event::Open => {
-                let hello = s.client.hello();
+                let params = s
+                    .conn
+                    .as_ref()
+                    .map(|c| c.params().clone())
+                    .unwrap_or_default();
+                let hello = s.client.hello_with(&params);
                 if let Some(c) = &s.conn {
                     c.send(hello);
                 }

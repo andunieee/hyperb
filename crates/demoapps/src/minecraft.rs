@@ -7,7 +7,8 @@
 //! and type console commands.
 
 use super::common::{menu, number, replace, text};
-use hypereffect::{cel, json, ui, Action, App, Element, Handler, Map, Outbox, Value};
+use hypereffect::{cel, json, ui, Action, App, Element, Handler, Outbox, Value};
+use std::collections::BTreeMap;
 
 const TICK_MS: u32 = 1000;
 const LOG_LINES: usize = 14;
@@ -593,7 +594,7 @@ impl Minecraft {
 }
 
 impl App for Minecraft {
-    fn hello(&mut self, out: &mut Outbox, _: &Map<String, Value>) {
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         out.signal(json!({
             "menu": {
                 "difficulty": menu(&[("peaceful", "Peaceful"), ("easy", "Easy"), ("normal", "Normal"), ("hard", "Hard")]),
