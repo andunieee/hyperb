@@ -37,7 +37,7 @@ url = { version = "2", optional = true }
 [features]
 default = ["ssr"]
 ssr = ["dep:leptos_axum", "dep:axum", "dep:tokio", "leptos/ssr", "leptos_meta/ssr", "leptos_router/ssr"]
-hydrate = ["leptos/hydrate", "hyperb-core/net", "hyperb-core/wasm", "dep:console_error_panic_hook", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:web-sys", "dep:hex", "dep:url"]
+hydrate = ["leptos/hydrate", "hyperb-core/net", "hyperb-core/iroh", "hyperb-core/wasm", "dep:console_error_panic_hook", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:web-sys", "dep:hex", "dep:url"]
 
 [package.metadata.leptos]
 output-name = "hyperb-web"

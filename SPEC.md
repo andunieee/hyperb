@@ -7,8 +7,8 @@ session. The hypereffect message protocol itself is not covered here.
 
 Status: all of it is implemented in `hyperb-core` (`address.rs`, `http.rs`,
 and `net/iroh.rs`, `net/wasm.rs` behind the `iroh` and `wasm` features). The
-desktop, terminal and Android renderers have every kind of session, and the web build has HTTP and remote wasm (`net/wasm_js.rs`, see
-section 4). The demo server serves its apps over HTTP and iroh, some of them
+desktop, terminal and Android renderers have every kind of session, and the web build has HTTP, iroh (through relays only) and remote wasm
+(`net/wasm_js.rs`, see section 4). The demo server serves its apps over HTTP and iroh, some of them
 also as wasm modules (`/<app>.wasm`), and prints their addresses.
 
 ## 1. Addresses
@@ -161,6 +161,9 @@ line `tag json` is one SSE event named `tag` with the JSON as data.
    stream to the server when data arrives on it, so servers accept it after
    the `hello` is sent.
 4. The session ends when either side closes the stream or the connection.
+
+The web renderer runs the same session on iroh's browser build. A page cannot
+open UDP sockets, so it reaches the server only through a relay, never directly.
 
 ## 4. Wasm session
 
