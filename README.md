@@ -58,6 +58,8 @@ Each component is released separately by pushing a tag named `<component>-<N>-<M
 * `tui-*`: the terminal app for Linux, macOS and Windows
 * `demoserver-*`: the demo server and its wasm apps for Linux, macOS and Windows
 
+The web renderer follows the same tag scheme, but `web-*` tags deploy it to GitHub Pages instead of publishing a release.
+
 ## Building from source
 ### Dependencies
 * rustc

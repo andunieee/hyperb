@@ -77,3 +77,20 @@ android:
 clean:
     cargo clean
     rm -rf android/app/build android/app/src/main/jniLibs
+
+# Create the next release tag for a component (android, desktop, tui, demoserver, web); kind is "patch" (<N>-<M+1>) or "major" (<N+1>-1)
+tag target kind="patch":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{target}}" in android|desktop|tui|demoserver|web) ;; *) echo "unknown target '{{target}}'" >&2; exit 1 ;; esac
+    case "{{kind}}" in patch|major) ;; *) echo "kind must be patch or major" >&2; exit 1 ;; esac
+    last=$(git tag -l "{{target}}-*-*" | sed -nE 's/^{{target}}-([0-9]+)-([0-9]+)$/\1 \2/p' | sort -k1,1n -k2,2n | tail -n1)
+    if [ -z "$last" ]; then
+        n=1; m=1
+    else
+        read -r n m <<< "$last"
+        if [ "{{kind}}" = major ]; then n=$((n + 1)); m=1; else m=$((m + 1)); fi
+    fi
+    tag="{{target}}-$n-$m"
+    git tag "$tag"
+    echo "created $tag (was: ${last:-none}); publish with: git push origin $tag"
