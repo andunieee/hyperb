@@ -3,11 +3,11 @@ name: Build Windows installer
 # Builds the GTK4 desktop app with MSYS2's UCRT64 toolchain and packages it as
 # an installer (Start menu entry, uninstaller, hyperb:// handler) and a portable
 # .zip. GTK4 cannot be linked statically, so all runtime libraries ship in the
-# bundle. Runs on "v*" tags and attaches both to the GitHub release.
+# bundle. Runs on "desktop-*" tags and attaches both to the GitHub release.
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["desktop-*"]
   workflow_dispatch:
 
 permissions:
@@ -43,7 +43,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${GITHUB_REF_TYPE}" = tag ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
+            # desktop-5-1 -> 5.1
+            VERSION="$(echo "${GITHUB_REF_NAME#desktop-}" | tr - .)"
           else
             VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
           fi

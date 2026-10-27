@@ -1,0 +1,63 @@
+name: Build tui
+
+# Builds the terminal app for Linux, macOS and Windows and attaches
+# the archives to the GitHub release. Runs on "tui-<N>-<M>" tags.
+
+on:
+  push:
+    tags: ["tui-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: linux-x64, exe: "" }
+          - { os: macos-latest, name: macos-arm64, exe: "" }
+          - { os: windows-latest, name: windows-x64, exe: ".exe" }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked -p hyperb-tui
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            VERSION="$(echo "${GITHUB_REF_NAME#tui-}" | tr - .)"
+          else
+            VERSION=dev
+          fi
+          base="hyperb-tui-${{ matrix.name }}-v${VERSION}"
+          mkdir -p dist "$base"
+          cp "target/release/hyperb-tui${{ matrix.exe }}" "$base/"
+          if [ "${{ matrix.exe }}" = .exe ]; then
+            7z a "dist/${base}.zip" "$base"
+          else
+            tar czf "dist/${base}.tar.gz" "$base"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tui-${{ matrix.name }}
+          path: dist/
+
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

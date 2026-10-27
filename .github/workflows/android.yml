@@ -1,0 +1,83 @@
+name: Build Android APK
+
+# Builds the Rust library for the Android ABIs, then the APK, and attaches it to
+# the GitHub release. Runs on "android-<N>-<M>" tags. To sign with a stable key
+# (needed for the APK to upgrade a previous install) set the secrets
+# ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and
+# ANDROID_KEY_PASSWORD; without them the APK is signed with a throwaway debug key.
+
+on:
+  push:
+    tags: ["android-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - name: Version and signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            # android-5-1 -> name 5.1, code 501 (so a bumped <M> still upgrades)
+            n="$(echo "${GITHUB_REF_NAME}" | cut -d- -f2)"
+            m="$(echo "${GITHUB_REF_NAME}" | cut -d- -f3)"
+            echo "ANDROID_VERSION_NAME=${n}.${m}" >> "$GITHUB_ENV"
+            echo "ANDROID_VERSION_CODE=$((n * 100 + m))" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${KEYSTORE_BASE64}" ]; then
+            echo "${KEYSTORE_BASE64}" | base64 -d > "${RUNNER_TEMP}/release.jks"
+            {
+              echo "ANDROID_KEYSTORE=${RUNNER_TEMP}/release.jks"
+              echo "ANDROID_KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}"
+              echo "ANDROID_KEY_ALIAS=${KEY_ALIAS}"
+              echo "ANDROID_KEY_PASSWORD=${KEY_PASSWORD}"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::no signing key configured, signing with the debug key"
+          fi
+
+      - name: Build the native library
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -o android/app/src/main/jniLibs build --release --locked -p hyperb-mobile
+
+      - name: Build the APK
+        run: |
+          android/gradlew -p android assembleRelease
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/hyperb-android-${ANDROID_VERSION_NAME:-dev}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/
+
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

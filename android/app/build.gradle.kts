@@ -44,17 +44,31 @@ android {
         applicationId = "com.hyperb.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // The release workflow derives these from an android-<N>-<M> tag.
+        versionCode = System.getenv("ANDROID_VERSION_CODE")?.toInt() ?: 1
+        versionName = System.getenv("ANDROID_VERSION_NAME") ?: "0.1.0"
         ndk {
             // Rust cdylib built via: cargo ndk -t arm64-v8a -t armeabi-v7a -o app/src/main/jniLibs build -p hyperb-mobile
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
+    signingConfigs {
+        // Only set up by the release workflow; locally, release builds fall back to the debug key.
+        System.getenv("ANDROID_KEYSTORE")?.let { keystore ->
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

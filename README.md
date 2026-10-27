@@ -52,7 +52,11 @@ Nothing to install: open <https://andunieee.github.io/hyperb/>.
 </details>
 
 ## Releases
-Every `v*` tag publishes, on GitHub Releases, a `.zip` and a `-setup-` installer for Windows.
+Each component is released separately by pushing a tag named `<component>-<N>-<M>` (for example `android-6-1`), which publishes a GitHub release with:
+* `desktop-*`: a `.zip` and a `-setup-` installer for Windows
+* `android-*`: the APK
+* `tui-*`: the terminal app for Linux, macOS and Windows
+* `demoserver-*`: the demo server and its wasm apps for Linux, macOS and Windows
 
 ## Building from source
 ### Dependencies
