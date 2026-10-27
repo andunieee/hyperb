@@ -5,32 +5,6 @@ export ANDROID_NDK_HOME := env_var_or_default('ANDROID_NDK_HOME', ANDROID_HOME /
 default:
     @just --list
 
-# One-time tool setup (cargo-leptos, wasm and android targets, cargo-ndk)
-setup:
-    cargo install cargo-leptos --locked
-    cargo install cargo-ndk --locked
-    rustup target add wasm32-unknown-unknown aarch64-linux-android armv7-linux-androideabi
-
-# Type-check the whole workspace
-check:
-    cargo check --workspace
-
-# Run all tests
-test:
-    cargo test --workspace
-
-# Lint the whole workspace
-clippy:
-    cargo clippy --workspace --all-targets
-
-# Format all Rust code
-fmt:
-    cargo fmt --all
-
-# Build every native crate
-build:
-    cargo build --workspace
-
 # Run the GTK4 desktop app
 desktop *args:
     cargo run -p hyperb-desktop -- {{args}}
@@ -91,21 +65,10 @@ web:
 web-release:
     cargo leptos build --release
 
-# Build the Rust JNI library into the Android project's jniLibs
-android-lib profile="debug":
-    cargo ndk -t arm64-v8a -t armeabi-v7a -o android/app/src/main/jniLibs build -p hyperb-mobile {{ if profile == "release" { "--release" } else { "" } }}
-
-# Build the Android debug APK
-android: android-lib
-    android/gradlew -p android assembleDebug
-
-# Build and install the Android debug APK on a connected device
-android-install: android-lib
+# Build the dev build and install it on all devices connected through adb
+android:
+    cargo ndk -t arm64-v8a -t armeabi-v7a -o android/app/src/main/jniLibs build -p hyperb-mobile
     android/gradlew -p android installDebug
-
-# Let a connected device reach the demoserver at localhost:9001
-android-reverse:
-    adb reverse tcp:9001 tcp:9001
 
 # Remove build outputs
 clean:
