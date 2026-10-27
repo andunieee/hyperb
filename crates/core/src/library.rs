@@ -47,6 +47,11 @@ pub struct Library {
     /// In the order they were added.
     #[serde(default)]
     pub favorites: Vec<Entry>,
+    /// The `hyperb://` addresses that were open when the app last changed
+    /// them, in tab order; renderers reopen them on startup unless they are
+    /// started with an address.
+    #[serde(default)]
+    pub session: Vec<String>,
 }
 
 impl Library {

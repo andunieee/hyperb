@@ -40,6 +40,19 @@ impl Library {
         self.store.borrow().connect(url, identity)
     }
 
+    /// The addresses that were open when the app last saved them.
+    pub fn session(&self) -> Vec<String> {
+        self.with(|l| l.session.clone())
+    }
+
+    /// Remembers the open addresses. Nothing displays them, so listeners
+    /// are not called.
+    pub fn save_session(&self, session: Vec<String>) {
+        if let Err(e) = self.store.borrow_mut().update(|l, _| l.session = session) {
+            eprintln!("hyperb: cannot save the session: {e}");
+        }
+    }
+
     pub fn visit(&self, url: &Url) {
         self.update(|s| s.visit(url));
     }

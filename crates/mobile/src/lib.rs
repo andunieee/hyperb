@@ -364,6 +364,25 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_setFavorite(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// `setSession(address: String?)`: remembers the open address (or none), to
+/// reopen it on the next start.
+#[no_mangle]
+pub extern "system" fn Java_com_hyperb_app_RustBridge_setSession(
+    mut env: EnvUnowned<'_>,
+    _class: JClass,
+    input: JString,
+) {
+    env.with_env(|env| -> jni::errors::Result<()> {
+        let input = opt_string(env, &input)?;
+        let result = store().update(|l, _| l.session = input.into_iter().collect());
+        if let Err(e) = result {
+            log::warn!("cannot save the session: {e}");
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// `forget(address: String?): String`: removes an address from the history,
 /// or with null clears it, and returns the library.
 #[no_mangle]

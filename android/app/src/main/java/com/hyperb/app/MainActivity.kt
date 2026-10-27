@@ -75,7 +75,13 @@ class MainActivity : ComponentActivity() {
             null
         }
         browser.loadLibrary()
-        if (savedInstanceState == null) openLink(intent)
+        // A link opens what it names; otherwise the last session comes back,
+        // also after a restart or a rotation.
+        if (savedInstanceState == null && intent?.action == Intent.ACTION_VIEW) {
+            openLink(intent)
+        } else {
+            browser.library.session.firstOrNull()?.let { browser.navigate(it) }
+        }
         setContent { HyperbTheme { BrowserScreen(browser) } }
     }
 
@@ -129,7 +135,14 @@ class Browser : Host {
         session = s
         error = null
         snapshot = s.snapshot()
-        snapshot?.let { address = it.address }
+        snapshot?.let {
+            address = it.address
+            try {
+                RustBridge.setSession(it.address)
+            } catch (e: RuntimeException) {
+                Log.e("hyperb", "session", e)
+            }
+        }
         thread(name = "hyperb-session") {
             s.run { snap -> main.post { if (session === s) snapshot = snap } }
         }

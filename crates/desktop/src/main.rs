@@ -77,8 +77,15 @@ fn main() -> glib::ExitCode {
             }
             None => {
                 let (identity, library) = state.borrow().clone().expect("started up");
+                let restore = urls.is_empty();
+                let session = library.session();
                 let b = Browser::open(app, identity, library);
-                b.open_all(&urls, links);
+                if restore {
+                    // Nothing was asked for: reopen what was open last time.
+                    b.open_all(&session, false);
+                } else {
+                    b.open_all(&urls, links);
+                }
                 *window.borrow_mut() = Rc::downgrade(&b);
             }
         }
@@ -227,6 +234,14 @@ impl Browser {
                 }
             });
         }
+        {
+            let b = Rc::downgrade(self);
+            t.on_navigate(move || {
+                if let Some(b) = b.upgrade() {
+                    b.save_session();
+                }
+            });
+        }
         self.tabs.borrow_mut().push(t.clone());
         self.notebook.set_current_page(Some(i));
         match url {
@@ -236,13 +251,23 @@ impl Browser {
         }
     }
 
+    /// Remembers the open addresses, to reopen them on the next start.
+    fn save_session(&self) {
+        let session = self.tabs.borrow().iter().filter_map(|t| t.address()).collect();
+        self.library.save_session(session);
+    }
+
     fn close_tab(&self, t: &Rc<Tab>) {
         self.tabs.borrow_mut().retain(|x| !Rc::ptr_eq(x, t));
         if let Some(i) = self.notebook.page_num(&t.page) {
             self.notebook.remove_page(Some(i));
         }
         if self.tabs.borrow().is_empty() {
+            // Keep the session as it was, so closing the last tab (or the
+            // window) still reopens what was open.
             self.window.close();
+        } else {
+            self.save_session();
         }
     }
 

@@ -48,6 +48,8 @@ pub struct Tab {
     quiet: Cell<bool>,
     identity: Identity,
     library: Rc<Library>,
+    /// Called after the tab starts connecting to a new address.
+    navigated: RefCell<Option<Box<dyn Fn()>>>,
 }
 
 struct Session {
@@ -256,8 +258,19 @@ impl Tab {
                 quiet: Cell::new(false),
                 identity,
                 library,
+                navigated: RefCell::new(None),
             }
         })
+    }
+
+    /// Calls `f` each time the tab opens an address.
+    pub fn on_navigate(&self, f: impl Fn() + 'static) {
+        *self.navigated.borrow_mut() = Some(Box::new(f));
+    }
+
+    /// The `hyperb://` address the tab shows, if it has opened one.
+    pub fn address(&self) -> Option<String> {
+        self.session.borrow().url.as_ref().map(address::hyperb)
     }
 
     pub fn focus_url(&self) {
@@ -285,6 +298,9 @@ impl Tab {
                 self.content.grab_focus();
                 self.library.visit(&url);
                 self.connect(url);
+                if let Some(f) = &*self.navigated.borrow() {
+                    f();
+                }
             }
             Err(e) => {
                 self.banner_text.set_text(&format!("Invalid address: {e}"));
