@@ -56,7 +56,10 @@ pub fn App() -> impl IntoView {
         <Title text="hyperb"/>
         <Link rel="icon" type_="image/svg+xml" href="/icon.svg"/>
         <Router>
-            <Routes fallback=|| "Not found.">
+            // The page is served from "/" and from a sub-path on Pages (and
+            // as 404.html for any other), so every path shows the browser;
+            // a fallback other than Home would not match the server's HTML.
+            <Routes fallback=Home>
                 <Route path=StaticSegment("") view=Home/>
             </Routes>
         </Router>
