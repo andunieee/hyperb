@@ -93,4 +93,5 @@ tag target kind="patch":
     fi
     tag="{{target}}-$n-$m"
     git tag "$tag"
-    echo "created $tag (was: ${last:-none}); publish with: git push origin $tag"
+    git push origin $tag
+    echo "created $tag (was: ${last:-none})"
