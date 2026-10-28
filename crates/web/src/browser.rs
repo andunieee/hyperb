@@ -10,7 +10,8 @@
 //!
 //! The identity is kept in `localStorage`, and so are the history and the
 //! favorites ([`crate::store`]), which the welcome page and the toolbar's
-//! menu list. `?url=<address>` opens an address, and so does
+//! menu list. The metadata the app sends gives the page its title and icon,
+//! and its entries there theirs. `?url=<address>` opens an address, and so does
 //! `?link=<address>`, which is where the page has the browser send
 //! `web+hyperb://` links once the user lets it handle them.
 
@@ -57,6 +58,9 @@ pub struct Ctx {
     pub local_tabs: RwSignal<HashMap<String, String>>,
     /// History and favorites, as last stored.
     library: RwSignal<Library>,
+    /// The title and icon of `url`, from its library entry until the app
+    /// sends metadata.
+    entry: RwSignal<Option<Entry>>,
 }
 
 impl Ctx {
@@ -71,6 +75,7 @@ impl Ctx {
             version: RwSignal::new(0),
             local_tabs: RwSignal::new(HashMap::new()),
             library: RwSignal::new(store::load()),
+            entry: RwSignal::new(None),
         }
     }
 
@@ -93,7 +98,11 @@ impl Ctx {
             address::normalize(input)
         };
         let url = url.map_err(|e| format!("Invalid address: {e}"))?;
-        self.library.set(store::update(|l, now| l.visit(&url, now)));
+        let lib = store::update(|l, now| l.visit(&url, now));
+        let entry = lib.entry(&url).cloned();
+        self.entry
+            .set(Some(entry.unwrap_or_else(|| Entry::new(&url, 0))));
+        self.library.set(lib);
         self.connect(url);
         Ok(())
     }
@@ -211,9 +220,9 @@ impl Ctx {
 
     /// Picks up what changed in the client.
     fn refresh(self) {
-        let (diags, changed) = self
+        let (diags, changes) = self
             .client
-            .try_update_value(|c| (c.take_diagnostics(), !c.take_changes().is_empty()))
+            .try_update_value(|c| (c.take_diagnostics(), c.take_changes()))
             .unwrap_or_default();
         if !diags.is_empty() {
             let url = self
@@ -225,8 +234,29 @@ impl Ctx {
                 warn!("[{url}] {d}");
             }
         }
-        if changed {
+        if changes.metadata {
+            self.describe();
+        }
+        if !changes.is_empty() {
             self.version.update(|v| *v += 1);
+        }
+    }
+
+    /// Takes the title and icon from the metadata the app sent.
+    fn describe(self) {
+        let m = self.client.with_value(|c| c.metadata().clone());
+        let mut changed = false;
+        self.entry
+            .update(|e| changed = e.as_mut().is_some_and(|e| e.describe(&m)));
+        if !changed {
+            return;
+        }
+        if let Some(url) = self.url.get_untracked() {
+            let mut stored = false;
+            let lib = store::update(|l, _| stored = l.describe(&url, &m));
+            if stored {
+                self.library.set(lib);
+            }
         }
     }
 
@@ -375,10 +405,24 @@ pub fn Browser() -> impl IntoView {
 
     let state = move || ctx.state.get();
     let has_page = Memo::new(move |_| ctx.url.with(Option::is_some));
-    let title = move || match ctx.url.get() {
-        Some(u) => format!("{} · hyperb", address::label(&u)),
-        None => "hyperb".into(),
+    let title = move || match ctx.entry.get() {
+        Some(e) if ctx.url.with(Option::is_some) => format!("{} · hyperb", e.title),
+        _ => "hyperb".into(),
     };
+    // The page's own icon, until an app sends one.
+    let icon_link = document().query_selector("link[rel=icon]").ok().flatten();
+    let default_icon = icon_link.as_ref().and_then(|l| l.get_attribute("href"));
+    Effect::new(move |_| {
+        let icon = ctx
+            .entry
+            .with(|e| e.as_ref().and_then(|e| e.icon.clone()))
+            .filter(|i| i.starts_with("data:") && ctx.url.with(Option::is_some));
+        if let (Some(link), Some(href)) = (&icon_link, icon.or(default_icon.clone())) {
+            let _ = link.set_attribute("href", &href);
+            // The default is an SVG; an app's icon says its own type.
+            let _ = link.remove_attribute("type");
+        }
+    });
     let (status, status_title) = (
         move || match (
             state(),
@@ -612,13 +656,16 @@ fn Entries(
 ) -> impl IntoView {
     view! {
         <ul class="hb-entries">
-            <For each=move || entries.get() key=|e| e.address.clone() let:e>
+            <For each=move || entries.get() key=|e| (e.address.clone(), e.title.clone(), e.icon.clone()) let:e>
                 {
                     let (a, b) = (e.address.clone(), e.address.clone());
                     view! {
                         <li>
                             <button class="hb-entry" title=e.address.clone() on:click=move |_| open.run(a.clone())>
-                                <span class="hb-entry-icon" aria-hidden="true">{icon}</span>
+                                {match e.icon.clone().filter(|i| i.starts_with("data:")) {
+                                    Some(src) => view! { <img class="hb-entry-icon" src=src alt=""/> }.into_any(),
+                                    None => view! { <span class="hb-entry-icon" aria-hidden="true">{icon}</span> }.into_any(),
+                                }}
                                 <span class="hb-entry-text">
                                     <span class="hb-entry-title">{e.title.clone()}</span>
                                     <span class="hb-entry-address">{e.address.clone()}</span>

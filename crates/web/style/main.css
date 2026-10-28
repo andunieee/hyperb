@@ -286,6 +286,12 @@ textarea {
   color: var(--muted);
 }
 
+img.hb-entry-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .hb-entry-text {
   display: flex;
   flex-direction: column;

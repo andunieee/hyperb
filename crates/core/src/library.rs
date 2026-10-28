@@ -8,9 +8,12 @@
 //! renderer uses `localStorage` and the origin private file system.
 //!
 //! Entries are keyed by their `hyperb://` address ([`address::hyperb`]), so
-//! the same app typed two ways is one entry.
+//! the same app typed two ways is one entry. An entry's title and icon come
+//! from the metadata the app sends ([`Entry::describe`]), and stay when the
+//! app is opened again.
 
 use crate::address::{self, Kind};
+use hypereffect::Metadata;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
@@ -18,24 +21,54 @@ use url::Url;
 /// The most entries the history keeps; the oldest go first.
 pub const HISTORY_LIMIT: usize = 500;
 
+/// The longest icon kept, in bytes: icons are usually `data:` URLs, and the
+/// library is read and written whole.
+pub const ICON_LIMIT: usize = 32 * 1024;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     /// The `hyperb://` address.
     pub address: String,
-    /// A short name for lists ([`address::label`]).
+    /// The name the app gave itself, or else a short name for lists
+    /// ([`address::label`]).
     pub title: String,
+    /// The URL of the app's icon, if it sent one. Renderers show only
+    /// `data:` URLs, as with images.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     /// When it was last opened (history) or added (favorites), in
     /// milliseconds since the Unix epoch.
     pub time: u64,
 }
 
 impl Entry {
-    fn new(url: &Url, now: u64) -> Self {
+    pub fn new(url: &Url, now: u64) -> Self {
         Entry {
             address: address::hyperb(url),
             title: address::label(url),
+            icon: None,
             time: now,
         }
+    }
+
+    /// Takes the title and icon from the metadata an app sent, and returns
+    /// whether they changed. Empty metadata, which every session starts
+    /// with, changes nothing, so an app keeps its name while it reconnects.
+    pub fn describe(&mut self, m: &Metadata) -> bool {
+        if *m == Metadata::default() {
+            return false;
+        }
+        let title = match &m.name {
+            Some(n) if !n.trim().is_empty() => n.trim().to_string(),
+            _ => address::normalize(&self.address)
+                .map(|u| address::label(&u))
+                .unwrap_or_else(|_| self.address.clone()),
+        };
+        let icon = m.icon.clone().filter(|i| i.len() <= ICON_LIMIT);
+        let changed = title != self.title || icon != self.icon;
+        self.title = title;
+        self.icon = icon;
+        changed
     }
 }
 
@@ -63,12 +96,39 @@ impl Library {
         serde_json::to_string_pretty(self).expect("a library is always valid JSON")
     }
 
-    /// Records that `url` was opened at `now`.
+    /// The entry of `url` in the history, or else in the favorites.
+    pub fn entry(&self, url: &Url) -> Option<&Entry> {
+        let address = address::hyperb(url);
+        self.history
+            .iter()
+            .chain(&self.favorites)
+            .find(|e| e.address == address)
+    }
+
+    /// Records that `url` was opened at `now`, keeping the title and icon
+    /// it had.
     pub fn visit(&mut self, url: &Url, now: u64) {
-        let entry = Entry::new(url, now);
+        let mut entry = Entry::new(url, now);
+        if let Some(e) = self.entry(url) {
+            entry.title = e.title.clone();
+            entry.icon = e.icon.clone();
+        }
         self.history.retain(|e| e.address != entry.address);
         self.history.insert(0, entry);
         self.history.truncate(HISTORY_LIMIT);
+    }
+
+    /// Applies the metadata `url` sent to its entries (see
+    /// [`Entry::describe`]), and returns whether any changed.
+    pub fn describe(&mut self, url: &Url, m: &Metadata) -> bool {
+        let address = address::hyperb(url);
+        let mut changed = false;
+        for e in self.history.iter_mut().chain(&mut self.favorites) {
+            if e.address == address {
+                changed |= e.describe(m);
+            }
+        }
+        changed
     }
 
     /// Removes `address` from the history.
@@ -85,9 +145,14 @@ impl Library {
         self.favorites.iter().any(|e| e.address == address)
     }
 
-    /// Adds `url` to the favorites (at the end) or removes it.
+    /// Adds `url` to the favorites (at the end), with the title and icon it
+    /// has in the history, or removes it.
     pub fn set_favorite(&mut self, url: &Url, on: bool, now: u64) {
-        let entry = Entry::new(url, now);
+        let mut entry = Entry::new(url, now);
+        if let Some(e) = self.entry(url) {
+            entry.title = e.title.clone();
+            entry.icon = e.icon.clone();
+        }
         let pos = self
             .favorites
             .iter()
@@ -207,6 +272,17 @@ mod store {
 
         pub fn visit(&mut self, url: &Url) -> io::Result<()> {
             self.update(|l, now| l.visit(url, now))
+        }
+
+        /// Applies the metadata `url` sent to its entries, saving only if
+        /// that changed them, and returns whether it did.
+        pub fn describe(&mut self, url: &Url, m: &hypereffect::Metadata) -> io::Result<bool> {
+            self.reload();
+            if !self.library.describe(url, m) {
+                return Ok(false);
+            }
+            write_atomic(&self.dir.join(LIBRARY), self.library.to_json().as_bytes())?;
+            Ok(true)
         }
 
         /// Adds `url` to the favorites or removes it. Removing the last
@@ -363,6 +439,35 @@ mod tests {
         assert_eq!(l.favorites[0].time, 1);
         l.set_favorite(&a, false, 3);
         assert!(!l.is_favorite(&a));
+    }
+
+    #[test]
+    fn metadata_names_entries() {
+        let mut l = Library::default();
+        let a = url("example.com/a");
+        l.visit(&a, 1);
+        let plants = Metadata::new()
+            .name("Plants")
+            .icon("data:image/png;base64,AA==");
+        assert!(l.describe(&a, &plants));
+        assert!(!l.describe(&a, &plants));
+        assert_eq!(l.history[0].title, "Plants");
+        // Empty metadata is how every session starts: it changes nothing.
+        assert!(!l.describe(&a, &Metadata::new()));
+        // Reopening and starring keep the name and icon.
+        l.visit(&a, 2);
+        l.set_favorite(&a, true, 3);
+        assert_eq!(l.favorites[0].title, "Plants");
+        assert_eq!(l.favorites[0].icon, l.history[0].icon);
+        // Both lists follow, and a name that goes away falls back to the label.
+        assert!(l.describe(&a, &Metadata::new().icon("x".repeat(ICON_LIMIT + 1))));
+        for e in [&l.history[0], &l.favorites[0]] {
+            assert_eq!(
+                (e.title.as_str(), e.icon.as_deref()),
+                ("example.com/a", None)
+            );
+        }
+        assert!(!l.describe(&url("example.com/b"), &plants));
     }
 
     #[test]

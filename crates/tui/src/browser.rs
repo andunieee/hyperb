@@ -5,6 +5,8 @@
 //! and from then on feeds every frame to the [`Client`]. When the transport
 //! closes the last state stays on screen with controls disabled, and a banner
 //! offers to reconnect.
+//!
+//! The window is titled with the name the app gives itself in its metadata.
 
 use crate::page::{Action, Page, ACCENT, SPINNER};
 use crate::Msg;
@@ -154,7 +156,14 @@ impl Browser {
         if !diags.is_empty() {
             log(s.url.as_str(), &diags);
         }
-        if !s.client.take_changes().is_empty() {
+        let changes = s.client.take_changes();
+        // Empty metadata is how every session starts: the title stays while
+        // the app reconnects.
+        let m = s.client.metadata();
+        if changes.metadata && *m != Default::default() {
+            self.title = m.name.clone().unwrap_or_else(|| address::label(&s.url));
+        }
+        if !changes.is_empty() {
             self.tree = s.client.tree();
             self.page.sync(&self.tree, &s.client);
         }

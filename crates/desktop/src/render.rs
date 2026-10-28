@@ -1330,7 +1330,7 @@ fn format_number(v: f64, step: f64) -> String {
 }
 
 /// Loads `data:` images. Other schemes are not fetched; the alt text is shown.
-fn load_image(src: &str) -> Option<gdk::Texture> {
+pub fn load_image(src: &str) -> Option<gdk::Texture> {
     let rest = src.strip_prefix("data:")?;
     let (meta, data) = rest.split_once(',')?;
     let bytes = if meta.ends_with(";base64") {

@@ -4,6 +4,7 @@
 use gtk::prelude::*;
 use gtk::{glib, pango};
 use gtk4 as gtk;
+use hyperb_core::hypereffect::Metadata;
 use hyperb_core::identity::Identity;
 use hyperb_core::library::{self, Entry, Store};
 use hyperb_core::net::Connection;
@@ -28,6 +29,11 @@ impl Library {
 
     pub fn with<T>(&self, f: impl FnOnce(&library::Library) -> T) -> T {
         f(self.store.borrow().library())
+    }
+
+    /// The entry of `url` in the history or the favorites.
+    pub fn entry(&self, url: &Url) -> Option<Entry> {
+        self.with(|l| l.entry(url).cloned())
     }
 
     pub fn is_favorite(&self, url: &Url) -> bool {
@@ -55,6 +61,16 @@ impl Library {
 
     pub fn visit(&self, url: &Url) {
         self.update(|s| s.visit(url));
+    }
+
+    /// Names the entries of `url` after the metadata it sent.
+    pub fn describe(&self, url: &Url, m: &Metadata) {
+        match self.store.borrow_mut().describe(url, m) {
+            Ok(false) => return,
+            Ok(true) => {}
+            Err(e) => eprintln!("hyperb: cannot save the library: {e}"),
+        }
+        self.update(|_| Ok(()));
     }
 
     /// Adds or removes a favorite; a new favorite wasm app is downloaded to
@@ -208,7 +224,7 @@ fn list(
     let remove = Rc::new(remove);
     for e in entries {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        row.append(&gtk::Image::from_icon_name(icon));
+        row.append(&entry_icon(e, icon));
         let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
         text.set_hexpand(true);
         let title = gtk::Label::new(Some(&e.title));
@@ -244,4 +260,16 @@ fn list(
         }
     });
     list
+}
+
+/// The app's icon, or the list's.
+fn entry_icon(e: &Entry, fallback: &str) -> gtk::Image {
+    match e.icon.as_deref().and_then(crate::render::load_image) {
+        Some(tex) => {
+            let image = gtk::Image::from_paintable(Some(&tex));
+            image.set_pixel_size(16);
+            image
+        }
+        None => gtk::Image::from_icon_name(fallback),
+    }
 }

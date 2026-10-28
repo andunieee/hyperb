@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -149,10 +150,12 @@ open class MainActivity : ComponentActivity() {
                 intent.dataString?.let { browser.navigate(it, link = true) }
         }
         setContent {
-            val label = browser.snapshot?.label ?: "hyperb"
-            LaunchedEffect(label) {
+            val title = browser.snapshot?.title ?: "hyperb"
+            val icon = browser.snapshot?.icon
+            LaunchedEffect(title, icon) {
+                val bitmap = icon?.let(::decodeDataBitmap)
                 @Suppress("DEPRECATION")
-                setTaskDescription(ActivityManager.TaskDescription(label))
+                setTaskDescription(ActivityManager.TaskDescription(title, bitmap))
             }
             HyperbTheme { BrowserScreen(browser, ::scan) }
         }
@@ -501,11 +504,17 @@ private fun EntryRow(
     onOpen: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    // The app's icon, or the list's.
+    val bitmap = remember(e.icon) { e.icon?.let(::decodeDataUri) }
     Column {
         ListItem(
             headlineContent = { Text(e.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             supportingContent = { Text(e.address, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            leadingContent = icon?.let { { Icon(it, null, Modifier.size(20.dp)) } },
+            leadingContent = when {
+                bitmap != null -> { { Image(bitmap, null, Modifier.size(20.dp)) } }
+                icon != null -> { { Icon(icon, null, Modifier.size(20.dp)) } }
+                else -> null
+            },
             trailingContent = {
                 IconButton(onClick = onRemove) { Icon(Icons.Default.Close, removeLabel) }
             },

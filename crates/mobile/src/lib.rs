@@ -11,13 +11,15 @@
 //! use the handle after that.
 //!
 //! History and favorites live in a [`Store`] in the app's files directory;
-//! `open` records the history, and the library calls return it as JSON.
+//! `open` records the history, and the library calls return it as JSON. The
+//! metadata an app sends names its entries there, and the snapshot's `title`
+//! and `icon`.
 
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
 use hyperb_core::hypereffect::{json, serde_json, Value};
 use hyperb_core::identity::Identity;
-use hyperb_core::library::Store;
+use hyperb_core::library::{Entry, Store};
 use hyperb_core::net::{Connection, Event};
 use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::{JClass, JObject, JString};
@@ -47,6 +49,9 @@ struct Inner {
     client: Client,
     conn: Option<Connection>,
     url: Url,
+    /// The title and icon of `url`, from its library entry until the app
+    /// sends metadata.
+    entry: Entry,
     state: State,
 }
 
@@ -88,7 +93,11 @@ impl Inner {
         for d in self.client.take_diagnostics() {
             log::warn!("[{}] {d}", self.url);
         }
-        let _ = self.client.take_changes();
+        if self.client.take_changes().metadata && self.entry.describe(self.client.metadata()) {
+            if let Err(e) = store().describe(&self.url, self.client.metadata()) {
+                log::warn!("cannot save the history: {e}");
+            }
+        }
         let mut tree = serde_json::to_value(self.client.tree()).unwrap_or_default();
         self.add_bound_values(&mut tree);
         let (state, reason) = match &self.state {
@@ -100,6 +109,8 @@ impl Inner {
             "url": self.url.as_str(),
             "address": address::hyperb(&self.url),
             "label": address::label(&self.url),
+            "title": self.entry.title,
+            "icon": self.entry.icon,
             "state": state,
             "reason": reason,
             "connected": self.client.is_connected(),
@@ -223,6 +234,12 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_open(
                 log::warn!("cannot save the history: {e}");
             }
         }
+        store.reload();
+        let entry = store
+            .library()
+            .entry(&url)
+            .cloned()
+            .unwrap_or_else(|| Entry::new(&url, 0));
         let conn = store.connect(&url, identity);
         let s = Box::new(Session {
             events: conn.events(),
@@ -230,6 +247,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_open(
                 client: Client::new(),
                 conn: Some(conn),
                 url,
+                entry,
                 state: State::Connecting,
             }),
         });

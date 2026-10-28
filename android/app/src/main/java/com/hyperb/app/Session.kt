@@ -43,6 +43,10 @@ class Snapshot(
     /** The user-facing `hyperb://` form of [url], for the address bar. */
     val address: String,
     val label: String,
+    /** The name the app gives itself, or else [label]. */
+    val title: String,
+    /** The app's icon, if it sent one; only `data:` URLs are shown. */
+    val icon: String?,
     /** `connecting`, `open` or `closed`. */
     val state: String,
     val reason: String?,
@@ -57,6 +61,8 @@ class Snapshot(
                 url = o.getString("url"),
                 address = o.optString("address", o.getString("url")),
                 label = o.getString("label"),
+                title = o.optString("title", o.getString("label")),
+                icon = o.opt("icon") as? String,
                 state = o.getString("state"),
                 reason = o.opt("reason") as? String,
                 connected = o.optBoolean("connected"),
@@ -68,7 +74,7 @@ class Snapshot(
 
 /** The history (most recent first) and favorites, from [RustBridge.library]. */
 class Library(val history: List<Entry>, val favorites: List<Entry>) {
-    class Entry(val address: String, val title: String)
+    class Entry(val address: String, val title: String, val icon: String?)
 
     fun isFavorite(address: String?) = favorites.any { it.address == address }
 
@@ -81,7 +87,7 @@ class Library(val history: List<Entry>, val favorites: List<Entry>) {
                 val a = o.optJSONArray(key) ?: return emptyList()
                 return List(a.length()) {
                     val e = a.getJSONObject(it)
-                    Entry(e.getString("address"), e.optString("title", e.getString("address")))
+                    Entry(e.getString("address"), e.optString("title", e.getString("address")), e.opt("icon") as? String)
                 }
             }
             return Library(list("history"), list("favorites"))

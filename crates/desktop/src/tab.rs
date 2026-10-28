@@ -8,12 +8,13 @@
 //!
 //! Every address the user opens goes to the history; the toolbar's star adds
 //! it to the favorites, and the popover next to it (and the page of a new
-//! tab) lists both.
+//! tab) lists both. The metadata the app sends names the tab, gives it an
+//! icon, and does the same for its entries there.
 
 use crate::clamp::Clamp;
 use crate::debug::{Debugger, Dir};
 use crate::library::{self, Library};
-use crate::render::Renderer;
+use crate::render::{self, Renderer};
 use gtk::prelude::*;
 use gtk::{gdk, glib, pango};
 use gtk4 as gtk;
@@ -21,6 +22,7 @@ use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
 use hyperb_core::hypereffect::{json, Value};
 use hyperb_core::identity::Identity;
+use hyperb_core::library::Entry;
 use hyperb_core::net::{Connection, Event};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -32,11 +34,12 @@ const CONTENT_WIDTH: i32 = 800;
 pub struct Tab {
     /// The notebook page.
     pub page: gtk::Box,
-    /// The notebook tab: spinner, title and close button.
+    /// The notebook tab: spinner or icon, title and close button.
     pub tab_label: gtk::Box,
     pub title: gtk::Label,
     pub close_button: gtk::Button,
     spinner: gtk::Spinner,
+    icon: gtk::Image,
     url_entry: gtk::Entry,
     star: gtk::ToggleButton,
     banner: gtk::Box,
@@ -56,6 +59,9 @@ struct Session {
     client: Client,
     conn: Option<Connection>,
     url: Option<Url>,
+    /// The title and icon of `url`, from its library entry until the app
+    /// sends metadata.
+    entry: Option<Entry>,
     /// Bumped on every connect, so events from replaced connections are dropped.
     generation: u64,
     state: State,
@@ -75,6 +81,9 @@ impl Tab {
             // Tab strip entry.
             let spinner = gtk::Spinner::new();
             spinner.set_visible(false);
+            let icon = gtk::Image::new();
+            icon.set_pixel_size(16);
+            icon.set_visible(false);
             let title = gtk::Label::new(Some("New Tab"));
             title.set_width_chars(18);
             title.set_max_width_chars(28);
@@ -86,6 +95,7 @@ impl Tab {
             close_button.set_tooltip_text(Some("Close tab"));
             let tab_label = gtk::Box::new(gtk::Orientation::Horizontal, 6);
             tab_label.append(&spinner);
+            tab_label.append(&icon);
             tab_label.append(&title);
             tab_label.append(&close_button);
 
@@ -239,6 +249,7 @@ impl Tab {
                 title,
                 close_button,
                 spinner,
+                icon,
                 url_entry,
                 star,
                 banner,
@@ -249,6 +260,7 @@ impl Tab {
                     client: Client::new(),
                     conn: None,
                     url: None,
+                    entry: None,
                     generation: 0,
                     state: State::Idle,
                 }),
@@ -290,11 +302,16 @@ impl Tab {
         match url {
             Ok(url) => {
                 self.url_entry.set_text(&address::hyperb(&url));
-                self.title.set_text(&address::label(&url));
                 self.title
                     .set_tooltip_text(Some(address::hyperb(&url).as_str()));
                 self.content.grab_focus();
                 self.library.visit(&url);
+                let entry = self
+                    .library
+                    .entry(&url)
+                    .unwrap_or_else(|| Entry::new(&url, 0));
+                self.show_entry(&entry);
+                self.session.borrow_mut().entry = Some(entry);
                 self.connect(url);
                 if let Some(f) = &*self.navigated.borrow() {
                     f();
@@ -382,6 +399,32 @@ impl Tab {
         }
     }
 
+    /// Takes the title and icon from the metadata the app sent.
+    fn describe(&self) {
+        let (url, entry, m) = {
+            let mut s = self.session.borrow_mut();
+            let s = &mut *s;
+            let m = s.client.metadata().clone();
+            let (Some(url), Some(entry)) = (&s.url, &mut s.entry) else {
+                return;
+            };
+            if !entry.describe(&m) {
+                return;
+            }
+            (url.clone(), entry.clone(), m)
+        };
+        self.show_entry(&entry);
+        self.library.describe(&url, &m);
+    }
+
+    /// Shows the title and icon; the icon only while the spinner is hidden
+    /// (see `update_chrome`).
+    fn show_entry(&self, e: &Entry) {
+        self.title.set_text(&e.title);
+        let tex = e.icon.as_deref().and_then(render::load_image);
+        self.icon.set_paintable(tex.as_ref());
+    }
+
     fn set_favorite(&self, on: bool) {
         let url = self.session.borrow().url.clone();
         if let Some(url) = url {
@@ -466,6 +509,9 @@ impl Tab {
         if changes.is_empty() {
             return;
         }
+        if changes.metadata {
+            self.describe();
+        }
         self.quiet.set(true);
         {
             let s = self.session.borrow();
@@ -487,6 +533,8 @@ impl Tab {
         let connecting = s.state == State::Connecting;
         self.spinner.set_visible(connecting);
         self.spinner.set_spinning(connecting);
+        self.icon
+            .set_visible(!connecting && self.icon.paintable().is_some());
         let icon = match (&s.state, s.url.as_ref().map(Url::scheme)) {
             (State::Open, Some("https" | "iroh")) => Some("channel-secure-symbolic"),
             (State::Open, _) => Some("channel-insecure-symbolic"),
@@ -523,7 +571,9 @@ fn welcome(library: gtk::Box) -> gtk::Widget {
     let title = gtk::Label::new(Some("hyperb"));
     title.add_css_class("he-v-h1");
     let hint = gtk::Label::new(None);
-    hint.set_markup(r#"A browser for <a href="https://github.com/andunieee/hyperb">hyperb</a> apps."#);
+    hint.set_markup(
+        r#"A browser for <a href="https://github.com/andunieee/hyperb">hyperb</a> apps."#,
+    );
     hint.add_css_class("he-v-caption");
     b.append(&title);
     b.append(&hint);

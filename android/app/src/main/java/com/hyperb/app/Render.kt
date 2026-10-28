@@ -2,6 +2,7 @@
 
 package com.hyperb.app
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.BorderStroke
@@ -410,7 +411,9 @@ private fun ImageEl(n: Node, modifier: Modifier) {
 }
 
 /** Decodes `data:` images; other schemes are not fetched, so the alt text shows. */
-private fun decodeDataUri(src: String): ImageBitmap? = runCatching {
+internal fun decodeDataUri(src: String): ImageBitmap? = decodeDataBitmap(src)?.asImageBitmap()
+
+internal fun decodeDataBitmap(src: String): Bitmap? = runCatching {
     if (!src.startsWith("data:")) return null
     val comma = src.indexOf(',')
     if (comma < 0) return null
@@ -421,7 +424,7 @@ private fun decodeDataUri(src: String): ImageBitmap? = runCatching {
     } else {
         URLDecoder.decode(data.replace("+", "%2B"), "UTF-8").toByteArray()
     }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 }.getOrNull()
 
 @Composable
