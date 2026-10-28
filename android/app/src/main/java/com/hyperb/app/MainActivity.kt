@@ -14,13 +14,22 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Switch
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialogDefaults
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -318,29 +327,19 @@ private fun Settings(publicKey: String?, onDismiss: () -> Unit) {
         title = { Text("Settings") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Style", style = MaterialTheme.typography.labelMedium)
-                for (style in Style.entries) {
-                    Row(
-                        Modifier.fillMaxWidth().selectable(style == Appearance.style, role = Role.RadioButton) {
-                            Appearance.set(style = style)
-                        },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(style == Appearance.style, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(style.label)
-                    }
-                }
-                Text("Colors", Modifier.padding(top = 12.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    Palette.entries.forEachIndexed { i, palette ->
-                        SegmentedButton(
-                            selected = palette == Appearance.palette,
-                            onClick = { Appearance.set(palette = palette) },
-                            shape = SegmentedButtonDefaults.itemShape(i, Palette.entries.size, look.buttonShape),
-                        ) { Text(palette.label) }
-                    }
-                }
+                Heading("Theme", top = false)
+                Choice(Mode.entries, Appearance.mode, Mode::label) { Appearance.mode = it }
+                Heading("Color · ${Appearance.palette.label}")
+                Swatches()
+                Toggle("Vivid colors", Appearance.vivid, enabled = Appearance.palette != Palette.MONO) { Appearance.vivid = it }
+                Toggle("Black background", Appearance.black, enabled = Appearance.mode != Mode.LIGHT) { Appearance.black = it }
+                Heading("Contrast")
+                Choice(Contrast.entries, Appearance.contrast, Contrast::label) { Appearance.contrast = it }
+                Heading("Corners")
+                Choice(Corners.entries, Appearance.corners, Corners::label) { Appearance.corners = it }
+                Heading("Size")
+                Choice(Size.entries, Appearance.size, Size::label) { Appearance.size = it }
+                Toggle("Solid borders", Appearance.borders) { Appearance.borders = it }
                 Text("Your key", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.labelMedium)
                 SelectionContainer {
                     Text(
@@ -352,6 +351,65 @@ private fun Settings(publicKey: String?, onDismiss: () -> Unit) {
             }
         },
     )
+}
+
+@Composable
+private fun Heading(text: String, top: Boolean = true) {
+    Text(text, Modifier.padding(top = if (top) 12.dp else 0.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium)
+}
+
+@Composable
+private fun <T> Choice(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        options.forEachIndexed { i, option ->
+            SegmentedButton(
+                selected = option == selected,
+                onClick = { onSelect(option) },
+                shape = SegmentedButtonDefaults.itemShape(i, options.size, LocalLook.current.buttonShape),
+            ) { Text(label(option), maxLines = 1) }
+        }
+    }
+}
+
+@Composable
+private fun Toggle(text: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().toggleable(checked, enabled, Role.Switch, onChange).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text,
+            Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+        )
+        Switch(checked, null, enabled = enabled)
+    }
+}
+
+/** A circle of each palette's seed color, checked when selected. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Swatches() {
+    val shape = LocalLook.current.buttonShape
+    val outline = MaterialTheme.colorScheme.onSurface
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (palette in Palette.entries) {
+            val color = palette.seed ?: systemSeed()
+            val selected = palette == Appearance.palette
+            Box(
+                Modifier.size(40.dp).clip(shape).background(color)
+                    .then(if (selected) Modifier.border(2.dp, outline, shape) else Modifier)
+                    .selectable(selected, role = Role.RadioButton) { Appearance.palette = palette }
+                    .semantics { contentDescription = palette.label },
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    selected -> Icon(Icons.Default.Check, null, tint = if (color.luminance() > 0.4f) Color.Black else Color.White)
+                    palette == Palette.SYSTEM -> Text("A", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 @Composable

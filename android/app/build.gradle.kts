@@ -95,6 +95,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
+    // Generates the color schemes from a seed color, with Google's material-color-utilities.
+    implementation("com.materialkolor:material-kolor:2.0.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.rustls:rustls-platform-verifier")
     // The QR scanner used when no scanner app (Binary Eye, ...) is installed.
