@@ -61,6 +61,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -249,7 +251,17 @@ private fun TabsEl(n: Node, h: Host, modifier: Modifier) {
     val current = shown.firstOrNull { it.id == selected } ?: shown.firstOrNull()
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (current != null) {
-            ScrollableTabRow(selectedTabIndex = shown.indexOf(current), edgePadding = 0.dp) {
+            val index = shown.indexOf(current)
+            // The indicator can be recomposed with a stale index after tabs are removed.
+            ScrollableTabRow(
+                selectedTabIndex = index,
+                edgePadding = 0.dp,
+                indicator = { positions ->
+                    if (index < positions.size) {
+                        TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(positions[index]))
+                    }
+                },
+            ) {
                 for (t in shown) {
                     Tab(
                         selected = t === current,
