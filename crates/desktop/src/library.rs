@@ -126,7 +126,7 @@ fn fill(root: &gtk::Box, lib: &Rc<Library>, limit: usize, open: &Rc<dyn Fn(&str)
         (l.favorites.clone(), l.history[..n].to_vec())
     });
     if favorites.is_empty() && history.is_empty() {
-        let empty = gtk::Label::new(Some("Apps you open and your favorites show up here."));
+        let empty = gtk::Label::new(Some("No favorites or history yet."));
         empty.add_css_class("he-v-caption");
         root.append(&empty);
         return;

@@ -434,7 +434,7 @@ pub fn Browser() -> impl IntoView {
                         inputmode="url"
                         autocomplete="off"
                         spellcheck="false"
-                        placeholder="Server address, e.g. https://example.com/app or localhost:9001/restaurant"
+                        placeholder="Server address"
                         aria-label="Server address"
                         prop:value=move || address.get()
                         on:input:target=move |ev| address.set(ev.target().value())
@@ -546,8 +546,9 @@ fn Welcome(ctx: Ctx, open: Callback<String>) -> impl IntoView {
         <div class="hb-welcome">
             <h1 class="he-h1">"hyperb"</h1>
             <p class="he-caption">
-                "Enter the address of a hypereffect server, e.g. hyperb://example.com/app. "
-                "Remote servers use https; localhost, IP addresses and .onion use http."
+                "A browser for "
+                <a class="hb-link" href="https://github.com/andunieee/hyperb">"hyperb"</a>
+                " apps."
             </p>
             <LibraryView ctx limit=12 open/>
             <p class="he-caption">
@@ -584,7 +585,7 @@ fn LibraryView(ctx: Ctx, limit: usize, open: Callback<String>) -> impl IntoView 
     view! {
         <div class="hb-library">
             <Show when=move || ctx.library.with(|l| l.favorites.is_empty() && l.history.is_empty())>
-                <p class="he-caption">"Apps you open and your favorites show up here."</p>
+                <p class="he-caption">"No favorites or history yet."</p>
             </Show>
             <Show when=move || ctx.library.with(|l| !l.favorites.is_empty())>
                 <h2 class="hb-library-heading">"Favorites"</h2>

@@ -94,9 +94,7 @@ impl Tab {
             reload.set_tooltip_text(Some("Reconnect (F5)"));
             let url_entry = gtk::Entry::new();
             url_entry.set_hexpand(true);
-            url_entry.set_placeholder_text(Some(
-                "Server address, e.g. https://example.com/app or localhost:9001/restaurant",
-            ));
+            url_entry.set_placeholder_text(Some("Server address"));
             url_entry.set_input_purpose(gtk::InputPurpose::Url);
             let star = gtk::ToggleButton::new();
             star.set_icon_name("non-starred-symbolic");
@@ -524,11 +522,8 @@ fn welcome(library: gtk::Box) -> gtk::Widget {
     b.add_css_class("hb-welcome");
     let title = gtk::Label::new(Some("hyperb"));
     title.add_css_class("he-v-h1");
-    let hint = gtk::Label::new(Some(
-        "Enter the address of a hypereffect server, e.g. hyperb://example.com/app.\n\
-         Remote servers use https; localhost, IP addresses and .onion use http.",
-    ));
-    hint.set_justify(gtk::Justification::Center);
+    let hint = gtk::Label::new(None);
+    hint.set_markup(r#"A browser for <a href="https://github.com/andunieee/hyperb">hyperb</a> apps."#);
     hint.add_css_class("he-v-caption");
     b.append(&title);
     b.append(&hint);
