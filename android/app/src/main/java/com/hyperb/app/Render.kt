@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -228,7 +227,7 @@ private fun ListEl(n: Node, h: Host, modifier: Modifier) {
     val items = n.children.filter { it.visible }
     Surface(
         modifier,
-        shape = RoundedCornerShape(10.dp),
+        shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column {
@@ -287,7 +286,12 @@ private fun DialogEl(n: Node, h: Host) {
         onDismissRequest = { if (dismissable) dismiss() },
         properties = DialogProperties(dismissOnBackPress = dismissable, dismissOnClickOutside = dismissable),
     ) {
-        Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 6.dp) {
+        val look = LocalLook.current
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            tonalElevation = if (look.outlined) 0.dp else 6.dp,
+            border = look.border(),
+        ) {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val title = n.str("title")?.takeIf { it.isNotEmpty() }
                 if (title != null || dismissable) {
@@ -328,7 +332,7 @@ private fun TextEl(n: Node, modifier: Modifier) {
     var m = modifier
     if (variant in setOf("h1", "h2", "h3")) m = m.semantics { heading() }
     if (variant == "code") {
-        m = m.clip(RoundedCornerShape(6.dp))
+        m = m.clip(MaterialTheme.shapes.extraSmall)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
             .padding(horizontal = 8.dp, vertical = 6.dp)
     }
@@ -357,7 +361,7 @@ private fun NoticeEl(n: Node, modifier: Modifier) {
         "warning", "failure" -> Icons.Default.Warning
         else -> Icons.Default.Info
     }
-    val shape = RoundedCornerShape(8.dp)
+    val shape = MaterialTheme.shapes.small
     Row(
         modifier.clip(shape).background(c.copy(alpha = 0.1f)).border(1.dp, c.copy(alpha = 0.5f), shape)
             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -375,10 +379,11 @@ private fun NoticeEl(n: Node, modifier: Modifier) {
 private fun BadgeEl(n: Node, modifier: Modifier) {
     val variant = n.str("variant") ?: "neutral"
     val c = statusColor(variant)
+    val shape = LocalLook.current.buttonShape
     Text(
         n.str("text") ?: "",
-        modifier.border(1.dp, c.copy(alpha = if (variant == "neutral") 0.25f else 0.6f), CircleShape)
-            .background(c.copy(alpha = 0.06f), CircleShape)
+        modifier.border(1.dp, c.copy(alpha = if (variant == "neutral") 0.25f else 0.6f), shape)
+            .background(c.copy(alpha = 0.06f), shape)
             .padding(horizontal = 8.dp, vertical = 1.dp),
         color = c,
         style = MaterialTheme.typography.labelMedium,
@@ -395,7 +400,7 @@ private fun ImageEl(n: Node, modifier: Modifier) {
         return
     }
     val m = when (n.str("variant")) {
-        "thumbnail" -> modifier.size(64.dp).clip(RoundedCornerShape(4.dp))
+        "thumbnail" -> modifier.size(64.dp).clip(MaterialTheme.shapes.extraSmall)
         "avatar" -> modifier.size(40.dp).clip(CircleShape)
         "full" -> modifier.fillMaxWidth()
         else -> modifier
@@ -449,18 +454,19 @@ private fun ButtonEl(n: Node, h: Host, modifier: Modifier) {
     val enabled = h.enabled(n)
     val onClick = { h.input(n.id, null, "onPress") }
     val label: @Composable () -> Unit = { Text(n.str("label") ?: "") }
+    val shape = LocalLook.current.buttonShape
     when (val v = n.str("variant")) {
-        "primary" -> Button(onClick, modifier, enabled) { label() }
+        "primary" -> Button(onClick, modifier, enabled, shape) { label() }
         "failure", "success" -> {
             val c = statusColor(v)
             val colors = ButtonDefaults.buttonColors(
                 containerColor = c,
                 contentColor = if (v == "failure") MaterialTheme.colorScheme.onError else Color.White,
             )
-            Button(onClick, modifier, enabled, colors = colors) { label() }
+            Button(onClick, modifier, enabled, shape, colors) { label() }
         }
-        "plain" -> TextButton(onClick, modifier, enabled) { label() }
-        else -> OutlinedButton(onClick, modifier, enabled) { label() }
+        "plain" -> TextButton(onClick, modifier, enabled, shape) { label() }
+        else -> OutlinedButton(onClick, modifier, enabled, shape) { label() }
     }
 }
 
@@ -592,7 +598,7 @@ private fun SelectEl(n: Node, h: Host, modifier: Modifier) {
                         SegmentedButton(
                             selected = value == selected,
                             onClick = { choose(value) },
-                            shape = SegmentedButtonDefaults.itemShape(i, options.size),
+                            shape = SegmentedButtonDefaults.itemShape(i, options.size, LocalLook.current.buttonShape),
                             enabled = enabled,
                         ) { Text(text) }
                     }

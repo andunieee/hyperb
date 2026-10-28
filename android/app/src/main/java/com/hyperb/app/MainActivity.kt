@@ -12,8 +12,20 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,10 +60,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -60,7 +68,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -111,6 +118,7 @@ open class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        Appearance.load(this)
         browser.publicKey = try {
             RustBridge.init(applicationContext, filesDir.absolutePath)
         } catch (e: Throwable) {
@@ -237,19 +245,6 @@ class Browser : Host {
 }
 
 @Composable
-fun HyperbTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val context = LocalContext.current
-    val colors = when {
-        android.os.Build.VERSION.SDK_INT >= 31 ->
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> darkColorScheme()
-        else -> lightColorScheme()
-    }
-    MaterialTheme(colorScheme = colors, content = content)
-}
-
-@Composable
 fun BrowserScreen(b: Browser, onScan: () -> Unit) {
     BackHandler(enabled = b.snapshot != null) { b.home() }
     Surface(Modifier.fillMaxSize()) {
@@ -314,13 +309,39 @@ private fun Toolbar(b: Browser, onScan: () -> Unit) {
 
 @Composable
 private fun Settings(publicKey: String?, onDismiss: () -> Unit) {
+    val look = LocalLook.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss, shape = look.buttonShape) { Text("Close") } },
+        modifier = look.border()?.let { Modifier.border(it, MaterialTheme.shapes.extraLarge) } ?: Modifier,
+        tonalElevation = if (look.outlined) 0.dp else AlertDialogDefaults.TonalElevation,
         title = { Text("Settings") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Your key", style = MaterialTheme.typography.labelMedium)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Style", style = MaterialTheme.typography.labelMedium)
+                for (style in Style.entries) {
+                    Row(
+                        Modifier.fillMaxWidth().selectable(style == Appearance.style, role = Role.RadioButton) {
+                            Appearance.set(style = style)
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(style == Appearance.style, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(style.label)
+                    }
+                }
+                Text("Colors", Modifier.padding(top = 12.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    Palette.entries.forEachIndexed { i, palette ->
+                        SegmentedButton(
+                            selected = palette == Appearance.palette,
+                            onClick = { Appearance.set(palette = palette) },
+                            shape = SegmentedButtonDefaults.itemShape(i, Palette.entries.size, look.buttonShape),
+                        ) { Text(palette.label) }
+                    }
+                }
+                Text("Your key", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.labelMedium)
                 SelectionContainer {
                     Text(
                         publicKey ?: "unavailable",
@@ -335,10 +356,16 @@ private fun Settings(publicKey: String?, onDismiss: () -> Unit) {
 
 @Composable
 private fun Banner(text: String, onReconnect: (() -> Unit)?) {
-    Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+    val look = LocalLook.current
+    val c = MaterialTheme.colorScheme
+    Surface(
+        color = if (look.outlined) c.surface else c.errorContainer,
+        border = look.border()?.let { BorderStroke(it.width, c.error) },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer)
-            onReconnect?.let { TextButton(onClick = it) { Text("Reconnect") } }
+            Text(text, Modifier.weight(1f), color = if (look.outlined) c.error else c.onErrorContainer)
+            onReconnect?.let { TextButton(onClick = it, shape = look.buttonShape) { Text("Reconnect") } }
         }
     }
 }
@@ -378,7 +405,7 @@ private fun Welcome(b: Browser) {
         if (lib.history.isNotEmpty()) {
             item {
                 SectionTitle("History") {
-                    TextButton(onClick = { b.forget(null) }) { Text("Clear history") }
+                    TextButton(onClick = { b.forget(null) }, shape = LocalLook.current.buttonShape) { Text("Clear history") }
                 }
             }
             items(lib.history.take(50), key = { "h:" + it.address }) { e ->
