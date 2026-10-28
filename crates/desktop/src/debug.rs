@@ -142,7 +142,8 @@ impl Debugger {
                 self.messages.remove(&w);
             }
         }
-        self.message_count.set_text(&n.min(MAX_MESSAGES).to_string());
+        self.message_count
+            .set_text(&n.min(MAX_MESSAGES).to_string());
     }
 
     /// Refreshes the element list from the client's tree, if its shape changed.
@@ -197,7 +198,12 @@ impl Debugger {
     }
 }
 
-fn collect(client: &Client, parent: Option<&str>, depth: usize, out: &mut Vec<(String, usize, String)>) {
+fn collect(
+    client: &Client,
+    parent: Option<&str>,
+    depth: usize,
+    out: &mut Vec<(String, usize, String)>,
+) {
     for id in client.children(parent) {
         let kind = client
             .get(id)

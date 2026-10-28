@@ -63,7 +63,8 @@ mod imp {
             let (min_w, _, _, _) = child.measure(gtk::Orientation::Horizontal, -1);
             let w = width.min(self.max_width.get()).max(min_w);
             let x = ((width - w) / 2).max(0);
-            let at = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x as f32, 0.0));
+            let at =
+                gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x as f32, 0.0));
             child.allocate(w, height, baseline, Some(at));
         }
     }

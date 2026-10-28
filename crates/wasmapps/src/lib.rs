@@ -52,9 +52,7 @@ mod glue {
     #[no_mangle]
     pub extern "C" fn receive(ptr: *mut u8, len: u32) {
         // SAFETY: `ptr` came from `alloc(len)` and is received once.
-        let input = unsafe {
-            Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len as usize))
-        };
+        let input = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len as usize)) };
         let out = SERVER.with_borrow_mut(|s| {
             s.receive(&input);
             s.output().take()

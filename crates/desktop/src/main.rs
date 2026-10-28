@@ -352,7 +352,12 @@ impl Browser {
 
     /// Remembers the open addresses, to reopen them on the next start.
     fn save_session(&self) {
-        let session = self.tabs.borrow().iter().filter_map(|t| t.address()).collect();
+        let session = self
+            .tabs
+            .borrow()
+            .iter()
+            .filter_map(|t| t.address())
+            .collect();
         self.library.save_session(session);
     }
 

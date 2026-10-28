@@ -45,7 +45,11 @@ async fn session(incoming: Incoming) -> Result<(), String> {
         .as_deref()
         .and_then(app_at_path)
         .ok_or("no app here")?;
-    let key: PublicKey = conn.remote_id().to_string().parse().map_err(|_| "bad key")?;
+    let key: PublicKey = conn
+        .remote_id()
+        .to_string()
+        .parse()
+        .map_err(|_| "bad key")?;
     let (mut send, mut recv) = conn.accept_bi().await.map_err(|e| e.to_string())?;
     println!("iroh session {app} for {key}");
 

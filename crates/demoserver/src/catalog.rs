@@ -161,7 +161,9 @@ are at <a href="{repo}">{repo}</a>.</p>
 }
 
 fn escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -188,7 +190,10 @@ mod tests {
     #[test]
     fn wasm_apps_say_hello() {
         let mut catalog = Catalog::default();
-        catalog.load_wasm(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../wasm-apps")));
+        catalog.load_wasm(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../wasm-apps"
+        )));
         for (name, wasm) in &catalog.wasm {
             let line = hello(&format!("hyperb://{}", wasm.path.display()));
             assert!(line.contains(' ') && line.ends_with('\n'), "{name}: {line}");

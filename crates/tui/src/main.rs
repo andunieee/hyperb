@@ -29,8 +29,8 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::{DefaultTerminal, Frame};
 use std::io::{self, stdout};
-use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::process::ExitCode;
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 use url::Url;
 

@@ -178,7 +178,11 @@ impl Renderer {
 
     /// Outlines the widget of element `id`; `None` clears the outline.
     pub fn highlight(&mut self, id: Option<&str>) {
-        if let Some(w) = self.highlighted.take().and_then(|old| self.widgets.get(&old)) {
+        if let Some(w) = self
+            .highlighted
+            .take()
+            .and_then(|old| self.widgets.get(&old))
+        {
             w.outer.remove_css_class("hb-hl");
         }
         if let Some((id, w)) = id.and_then(|id| self.widgets.get(id).map(|w| (id, w))) {
