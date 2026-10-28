@@ -1,6 +1,7 @@
 package com.hyperb.app
 
 import android.app.ActivityManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -10,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -66,6 +69,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlin.concurrent.thread
 
 /**
@@ -74,6 +79,34 @@ import kotlin.concurrent.thread
  */
 open class MainActivity : ComponentActivity() {
     private val browser = Browser()
+
+    /** A scanned code is opened like a link from another app: it cannot open local files. */
+    private fun openScanned(text: String?) {
+        if (!text.isNullOrBlank()) browser.navigate(text.trim(), link = true)
+    }
+
+    private val scanApp = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (it.resultCode == RESULT_OK) openScanned(it.data?.getStringExtra("SCAN_RESULT"))
+    }
+    private val scanBuiltIn = registerForActivityResult(ScanContract()) { openScanned(it.contents) }
+
+    /**
+     * Scans a QR code with a scanner app (Binary Eye, ZXing Barcode Scanner, ...) through the
+     * ZXing intent, or with the built-in scanner if none is installed.
+     */
+    private fun scan() {
+        try {
+            scanApp.launch(Intent("com.google.zxing.client.android.SCAN").putExtra("SCAN_MODE", "QR_CODE_MODE"))
+        } catch (_: ActivityNotFoundException) {
+            scanBuiltIn.launch(
+                ScanOptions()
+                    .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                    .setPrompt("Scan a hyperb QR code")
+                    .setBeepEnabled(false)
+                    .setOrientationLocked(false),
+            )
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,7 +132,7 @@ open class MainActivity : ComponentActivity() {
                 @Suppress("DEPRECATION")
                 setTaskDescription(ActivityManager.TaskDescription(label))
             }
-            HyperbTheme { BrowserScreen(browser) }
+            HyperbTheme { BrowserScreen(browser, ::scan) }
         }
     }
 
@@ -217,11 +250,11 @@ fun HyperbTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun BrowserScreen(b: Browser) {
+fun BrowserScreen(b: Browser, onScan: () -> Unit) {
     BackHandler(enabled = b.snapshot != null) { b.home() }
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.safeDrawingPadding().imePadding()) {
-            Toolbar(b)
+            Toolbar(b, onScan)
             val snap = b.snapshot
             if (snap?.state == "connecting") LinearProgressIndicator(Modifier.fillMaxWidth())
             b.error?.let { Banner(it, null) }
@@ -234,7 +267,7 @@ fun BrowserScreen(b: Browser) {
 }
 
 @Composable
-private fun Toolbar(b: Browser) {
+private fun Toolbar(b: Browser, onScan: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -253,6 +286,9 @@ private fun Toolbar(b: Browser) {
                 snap?.state != "open" -> null
                 snap.url.startsWith("https:") -> { { Icon(Icons.Default.Lock, "Connected (encrypted)") } }
                 else -> { { Icon(Icons.Default.Warning, "Connected (not encrypted)") } }
+            },
+            trailingIcon = {
+                IconButton(onClick = onScan) { Icon(painterResource(R.drawable.ic_qr_scan), "Scan a QR code") }
             },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
             keyboardActions = KeyboardActions(onGo = { b.navigate(b.address) }),

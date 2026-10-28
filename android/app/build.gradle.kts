@@ -97,6 +97,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.rustls:rustls-platform-verifier")
+    // The QR scanner used when no scanner app (Binary Eye, ...) is installed.
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
