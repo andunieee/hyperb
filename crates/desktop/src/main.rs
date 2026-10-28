@@ -48,6 +48,7 @@ fn main() -> glib::ExitCode {
         let state = state.clone();
         app.connect_startup(move |_| {
             load_css();
+            pointer_cursors();
             set_app_icon();
             let identity = Identity::load_default().unwrap_or_else(|e| {
                 eprintln!("hyperb: cannot load identity ({e}); using a temporary one");
@@ -109,6 +110,51 @@ fn load_css() {
         &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
+}
+
+/// Gives everything clickable the pointer cursor. GTK 4 CSS has no `cursor`
+/// property, so a hook on `realize` sets it on each widget as it appears,
+/// including ones GTK builds itself, like notebook tabs. Insensitive widgets
+/// are never under the pointer, so disabled buttons keep the default.
+fn pointer_cursors() {
+    unsafe extern "C" fn on_realize(
+        _hint: *mut glib::gobject_ffi::GSignalInvocationHint,
+        n_params: u32,
+        params: *const glib::gobject_ffi::GValue,
+        _data: glib::ffi::gpointer,
+    ) -> glib::ffi::gboolean {
+        if n_params > 0 {
+            // SAFETY: the first parameter of a signal is its instance, and
+            // the hook is only on a `GtkWidget` signal.
+            let value = unsafe { &*(params as *const glib::Value) };
+            if let Ok(widget) = value.get::<gtk::Widget>() {
+                let clickable = matches!(
+                    widget.css_name().as_str(),
+                    "button" | "checkbutton" | "switch" | "scale" | "tab"
+                ) || widget
+                    .downcast_ref::<gtk::ListBoxRow>()
+                    .is_some_and(|r| r.is_activatable());
+                if clickable && widget.cursor().is_none() {
+                    widget.set_cursor_from_name(Some("pointer"));
+                }
+            }
+        }
+        glib::ffi::GTRUE
+    }
+    // Signals are only registered once the class exists.
+    let _class = glib::Class::<gtk::Widget>::from_type(gtk::Widget::static_type());
+    let id = glib::subclass::signal::SignalId::lookup("realize", gtk::Widget::static_type())
+        .expect("GtkWidget::realize");
+    // SAFETY: the hook stays for the life of the process and holds no data.
+    unsafe {
+        glib::gobject_ffi::g_signal_add_emission_hook(
+            glib::translate::IntoGlib::into_glib(id),
+            0,
+            Some(on_realize),
+            std::ptr::null_mut(),
+            None,
+        );
+    }
 }
 
 /// Names the window icon. An installed app finds it in the user's icon theme
