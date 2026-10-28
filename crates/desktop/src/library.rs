@@ -2,13 +2,14 @@
 //! the list of them shown on new tabs and in the toolbar's popover.
 
 use gtk::prelude::*;
-use gtk::{glib, pango};
+use gtk::{gdk, glib, pango};
 use gtk4 as gtk;
 use hyperb_core::hypereffect::Metadata;
 use hyperb_core::identity::Identity;
 use hyperb_core::library::{self, Entry, Store};
 use hyperb_core::net::Connection;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use url::Url;
 
@@ -16,6 +17,9 @@ pub struct Library {
     store: RefCell<Store>,
     /// Called after every change; dropped once they return false.
     listeners: RefCell<Vec<Box<dyn Fn() -> bool>>>,
+    /// The `https` icons loaded or asked for in this run; `None` while
+    /// downloading or if that failed, which is not retried.
+    icons: RefCell<HashMap<String, Option<gdk::Texture>>>,
 }
 
 impl Library {
@@ -24,6 +28,7 @@ impl Library {
         Rc::new(Library {
             store: RefCell::new(Store::open(dir)),
             listeners: RefCell::new(Vec::new()),
+            icons: RefCell::new(HashMap::new()),
         })
     }
 
@@ -73,6 +78,37 @@ impl Library {
         self.update(|_| Ok(()));
     }
 
+    /// The app icon at `src`: a `data:` URL, or an `https` one once it has
+    /// been downloaded. One that has not is downloaded in the background,
+    /// and listeners are called when it arrives.
+    pub fn icon(self: &Rc<Self>, src: &str) -> Option<gdk::Texture> {
+        if let Some(tex) = crate::render::load_image(src) {
+            return Some(tex);
+        }
+        library::icon_file(src)?;
+        if let Some(tex) = self.icons.borrow().get(src) {
+            return tex.clone();
+        }
+        if let Some(bytes) = self.store.borrow().icon(src) {
+            let tex = texture(bytes);
+            self.icons.borrow_mut().insert(src.to_string(), tex.clone());
+            return tex;
+        }
+        self.icons.borrow_mut().insert(src.to_string(), None);
+        let fetch = self.store.borrow().fetch_icon(src);
+        let (weak, src) = (Rc::downgrade(self), src.to_string());
+        glib::spawn_future_local(async move {
+            let Some(tex) = fetch.await.and_then(texture) else {
+                return;
+            };
+            if let Some(lib) = weak.upgrade() {
+                lib.icons.borrow_mut().insert(src, Some(tex));
+                lib.update(|_| Ok(()));
+            }
+        });
+        None
+    }
+
     /// Adds or removes a favorite; a new favorite wasm app is downloaded to
     /// be kept.
     pub fn set_favorite(&self, url: &Url, on: bool) {
@@ -109,6 +145,10 @@ impl Library {
         listeners.append(&mut added);
         *added = listeners;
     }
+}
+
+fn texture(bytes: Vec<u8>) -> Option<gdk::Texture> {
+    gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes)).ok()
 }
 
 /// Favorites, then the most recent `limit` history entries, rebuilt on every
@@ -151,6 +191,7 @@ fn fill(root: &gtk::Box, lib: &Rc<Library>, limit: usize, open: &Rc<dyn Fn(&str)
     if !favorites.is_empty() {
         root.append(&heading("Favorites", None));
         root.append(&list(
+            lib,
             &favorites,
             "starred-symbolic",
             "Remove from favorites",
@@ -180,6 +221,7 @@ fn fill(root: &gtk::Box, lib: &Rc<Library>, limit: usize, open: &Rc<dyn Fn(&str)
         }
         root.append(&heading("History", Some(&clear)));
         root.append(&list(
+            lib,
             &history,
             "document-open-recent-symbolic",
             "Remove from history",
@@ -211,6 +253,7 @@ fn heading(text: &str, end: Option<&gtk::Button>) -> gtk::Box {
 }
 
 fn list(
+    lib: &Rc<Library>,
     entries: &[Entry],
     icon: &str,
     remove_tip: &str,
@@ -224,7 +267,7 @@ fn list(
     let remove = Rc::new(remove);
     for e in entries {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        row.append(&entry_icon(e, icon));
+        row.append(&entry_icon(lib, e, icon));
         let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
         text.set_hexpand(true);
         let title = gtk::Label::new(Some(&e.title));
@@ -263,8 +306,8 @@ fn list(
 }
 
 /// The app's icon, or the list's.
-fn entry_icon(e: &Entry, fallback: &str) -> gtk::Image {
-    match e.icon.as_deref().and_then(crate::render::load_image) {
+fn entry_icon(lib: &Rc<Library>, e: &Entry, fallback: &str) -> gtk::Image {
+    match e.icon.as_deref().and_then(|i| lib.icon(i)) {
         Some(tex) => {
             let image = gtk::Image::from_paintable(Some(&tex));
             image.set_pixel_size(16);

@@ -14,7 +14,7 @@
 use crate::clamp::Clamp;
 use crate::debug::{Debugger, Dir};
 use crate::library::{self, Library};
-use crate::render::{self, Renderer};
+use crate::render::Renderer;
 use gtk::prelude::*;
 use gtk::{gdk, glib, pango};
 use gtk4 as gtk;
@@ -217,6 +217,10 @@ impl Tab {
                 library.subscribe(move || match w.upgrade() {
                     Some(t) => {
                         t.update_star();
+                        let entry = t.session.borrow().entry.clone();
+                        if let Some(e) = entry {
+                            t.show_icon(&e);
+                        }
                         true
                     }
                     None => false,
@@ -417,11 +421,18 @@ impl Tab {
         self.library.describe(&url, &m);
     }
 
-    /// Shows the title and icon; the icon only while the spinner is hidden
-    /// (see `update_chrome`).
     fn show_entry(&self, e: &Entry) {
         self.title.set_text(&e.title);
-        let tex = e.icon.as_deref().and_then(render::load_image);
+        self.show_icon(e);
+    }
+
+    /// Shows the icon, only while the spinner is hidden (see
+    /// `update_chrome`). An `https` icon shows once the library has
+    /// downloaded it, which calls this again.
+    fn show_icon(&self, e: &Entry) {
+        let tex = e.icon.as_deref().and_then(|i| self.library.icon(i));
+        self.icon
+            .set_visible(tex.is_some() && !self.spinner.is_visible());
         self.icon.set_paintable(tex.as_ref());
     }
 

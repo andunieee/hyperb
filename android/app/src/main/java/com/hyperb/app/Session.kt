@@ -45,7 +45,7 @@ class Snapshot(
     val label: String,
     /** The name the app gives itself, or else [label]. */
     val title: String,
-    /** The app's icon, if it sent one; only `data:` URLs are shown. */
+    /** The app's icon, if it sent one; `data:` and `https` URLs are shown ([loadIcon]). */
     val icon: String?,
     /** `connecting`, `open` or `closed`. */
     val state: String,

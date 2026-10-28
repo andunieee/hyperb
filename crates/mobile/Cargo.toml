@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 hyperb-core = { workspace = true, features = ["net", "wasm", "iroh"] }
 url = "2"
 async-channel = "2"
+futures-executor = "0.3"
 jni = "0.22"
 log = "0.4"
 

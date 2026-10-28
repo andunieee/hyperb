@@ -29,6 +29,9 @@ object RustBridge {
     /** The history and favorites, as JSON; see [Library]. */
     @JvmStatic external fun library(): String
 
+    /** The `https` icon at [src], downloaded unless it is kept already; blocks. */
+    @JvmStatic external fun icon(src: String): ByteArray?
+
     /** Adds or removes a favorite (a wasm app is then kept for offline use); returns the library. */
     @JvmStatic external fun setFavorite(address: String, on: Boolean): String
 

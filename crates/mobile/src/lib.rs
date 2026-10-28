@@ -13,7 +13,7 @@
 //! History and favorites live in a [`Store`] in the app's files directory;
 //! `open` records the history, and the library calls return it as JSON. The
 //! metadata an app sends names its entries there, and the snapshot's `title`
-//! and `icon`.
+//! and `icon`; `icon` downloads `https` icons, which are kept with the store.
 
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
@@ -23,7 +23,7 @@ use hyperb_core::library::{Entry, Store};
 use hyperb_core::net::{Connection, Event};
 use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::{JClass, JObject, JString};
-use jni::sys::{jboolean, jlong, jstring};
+use jni::sys::{jboolean, jbyteArray, jlong, jstring};
 use jni::{Env, EnvUnowned};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
@@ -353,6 +353,31 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_library(
         let mut store = store();
         store.reload();
         Ok(env.new_string(store.library().to_json())?.into_raw())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// `icon(src: String): ByteArray?`: the `https` icon at `src`, downloaded
+/// (and kept while an entry uses it) unless it already was; null if it
+/// cannot be. Blocks while downloading, so call it off the main thread.
+#[no_mangle]
+pub extern "system" fn Java_com_hyperb_app_RustBridge_icon(
+    mut env: EnvUnowned<'_>,
+    _class: JClass,
+    src: JString,
+) -> jbyteArray {
+    env.with_env(|env| -> jni::errors::Result<jbyteArray> {
+        let src = src.try_to_string(env)?;
+        // The store is unlocked while downloading.
+        let kept = {
+            let store = store();
+            store.icon(&src).ok_or_else(|| store.fetch_icon(&src))
+        };
+        let bytes = kept.map_or_else(futures_executor::block_on, Some);
+        Ok(match bytes {
+            Some(b) => env.byte_array_from_slice(&b)?.into_raw(),
+            None => std::ptr::null_mut(),
+        })
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

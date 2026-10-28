@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Switch
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -74,6 +76,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -94,6 +97,8 @@ import androidx.compose.ui.unit.dp
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlin.concurrent.thread
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * A window: the launcher opens one on the welcome page, and every link opens another
@@ -153,7 +158,7 @@ open class MainActivity : ComponentActivity() {
             val title = browser.snapshot?.title ?: "hyperb"
             val icon = browser.snapshot?.icon
             LaunchedEffect(title, icon) {
-                val bitmap = icon?.let(::decodeDataBitmap)
+                val bitmap = icon?.let { withContext(Dispatchers.IO) { loadIcon(it) } }
                 @Suppress("DEPRECATION")
                 setTaskDescription(ActivityManager.TaskDescription(title, bitmap))
             }
@@ -505,7 +510,9 @@ private fun EntryRow(
     onRemove: () -> Unit,
 ) {
     // The app's icon, or the list's.
-    val bitmap = remember(e.icon) { e.icon?.let(::decodeDataUri) }
+    val bitmap = produceState<ImageBitmap?>(null, e.icon) {
+        value = e.icon?.let { withContext(Dispatchers.IO) { loadIcon(it) } }?.asImageBitmap()
+    }.value
     Column {
         ListItem(
             headlineContent = { Text(e.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },

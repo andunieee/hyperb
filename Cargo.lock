@@ -4283,6 +4283,7 @@ version = "0.1.0"
 dependencies = [
  "android_logger",
  "async-channel",
+ "futures-executor",
  "hyperb-core",
  "jni 0.22.4",
  "log",

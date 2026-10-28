@@ -100,6 +100,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import java.net.URLDecoder
+import java.util.Collections
 
 /*
  * Draws a resolved hypereffect tree with Compose. The Rust client keeps the
@@ -411,9 +412,26 @@ private fun ImageEl(n: Node, modifier: Modifier) {
 }
 
 /** Decodes `data:` images; other schemes are not fetched, so the alt text shows. */
-internal fun decodeDataUri(src: String): ImageBitmap? = decodeDataBitmap(src)?.asImageBitmap()
+private fun decodeDataUri(src: String): ImageBitmap? = decodeDataBitmap(src)?.asImageBitmap()
 
-internal fun decodeDataBitmap(src: String): Bitmap? = runCatching {
+/** The app icons at `https` URLs loaded so far, or null for those that failed. */
+private val appIcons = Collections.synchronizedMap(HashMap<String, Bitmap?>())
+
+/**
+ * Loads an app icon: a `data:` URL, or an `https` one, which the core downloads and keeps
+ * ([RustBridge.icon]). Blocks, so call it off the main thread. A failed download is not
+ * retried until the app restarts.
+ */
+internal fun loadIcon(src: String): Bitmap? {
+    if (!src.startsWith("https:")) return decodeDataBitmap(src)
+    if (appIcons.containsKey(src)) return appIcons[src]
+    val bytes = runCatching { RustBridge.icon(src) }.getOrNull()
+    val bitmap = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+    appIcons[src] = bitmap
+    return bitmap
+}
+
+private fun decodeDataBitmap(src: String): Bitmap? = runCatching {
     if (!src.startsWith("data:")) return null
     val comma = src.indexOf(',')
     if (comma < 0) return null

@@ -147,19 +147,46 @@ pub async fn fetch_module(url: &Url) -> Result<Vec<u8>, String> {
         .map_err(|_| "the download was cancelled".to_string())?
 }
 
+/// Largest icon accepted when downloading.
+const MAX_ICON: usize = 1 << 20;
+
+/// Downloads the `https` icon at `url` (at most 1 MiB). Any executor may
+/// await it.
+pub async fn fetch_icon(url: &Url) -> Result<Vec<u8>, String> {
+    if url.scheme() != "https" {
+        return Err("not an https URL".into());
+    }
+    let (tx, rx) = async_channel::bounded(1);
+    let url = url.clone();
+    spawn(async move {
+        let _ = tx
+            .send(download_at_most(&url, MAX_ICON, "the icon").await)
+            .await;
+    });
+    rx.recv()
+        .await
+        .map_err(|_| "the download was cancelled".to_string())?
+}
+
+/// The module of the remote wasm app at `url`.
 async fn download(url: &Url) -> Result<Vec<u8>, String> {
+    download_at_most(url, MAX_MODULE, "the wasm app").await
+}
+
+/// The body at `url`, if it is at most `max` bytes; errors call it `what`.
+async fn download_at_most(url: &Url, max: usize, what: &str) -> Result<Vec<u8>, String> {
     #[cfg(target_os = "android")]
     let _ = rustls::crypto::ring::default_provider().install_default();
     let resp = reqwest::get(url.clone())
         .await
         .and_then(|r| r.error_for_status())
         .map_err(|e| e.to_string())?;
-    if resp.content_length().is_some_and(|n| n > MAX_MODULE as u64) {
-        return Err("the wasm app is too large".into());
+    if resp.content_length().is_some_and(|n| n > max as u64) {
+        return Err(format!("{what} is too large"));
     }
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    if bytes.len() > MAX_MODULE {
-        return Err("the wasm app is too large".into());
+    if bytes.len() > max {
+        return Err(format!("{what} is too large"));
     }
     Ok(bytes.to_vec())
 }

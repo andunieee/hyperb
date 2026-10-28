@@ -3,9 +3,10 @@
 //! so that they open without downloading them again (or without a network).
 //!
 //! [`Library`] is the data, as JSON. Where it is kept is up to the platform:
-//! on native hosts [`Store`] keeps it in `<data dir>/library.json` and the
-//! modules in `<data dir>/wasm/` (see [`Store::default_dir`]); the web
-//! renderer uses `localStorage` and the origin private file system.
+//! on native hosts [`Store`] keeps it in `<data dir>/library.json`, the
+//! modules in `<data dir>/wasm/` and downloaded `https` icons in
+//! `<data dir>/icons/` (see [`Store::default_dir`]); the web renderer uses
+//! `localStorage` and the origin private file system.
 //!
 //! Entries are keyed by their `hyperb://` address ([`address::hyperb`]), so
 //! the same app typed two ways is one entry. An entry's title and icon come
@@ -32,8 +33,9 @@ pub struct Entry {
     /// The name the app gave itself, or else a short name for lists
     /// ([`address::label`]).
     pub title: String,
-    /// The URL of the app's icon, if it sent one. Renderers show only
-    /// `data:` URLs, as with images.
+    /// The URL of the app's icon, if it sent one. Native renderers show
+    /// `data:` URLs and, once [`Store::fetch_icon`] downloaded them,
+    /// `https` ones.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     /// When it was last opened (history) or added (favorites), in
@@ -206,17 +208,29 @@ pub fn module_file(url: &Url) -> Option<String> {
     Some(format!("{}.wasm", hex::encode(hash)))
 }
 
+/// The name a downloaded icon is kept under: the SHA-256 of its URL, as hex.
+/// `None` unless it is an `https` URL.
+pub fn icon_file(src: &str) -> Option<String> {
+    let url = Url::parse(src).ok()?;
+    if url.scheme() != "https" {
+        return None;
+    }
+    Some(hex::encode(Sha256::digest(url.as_str().as_bytes())))
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 mod store {
-    use super::{module_file, Library};
+    use super::{icon_file, module_file, Library};
     use std::io;
     use std::path::{Path, PathBuf};
     use url::Url;
 
     const LIBRARY: &str = "library.json";
     const MODULES: &str = "wasm";
+    const ICONS: &str = "icons";
 
-    /// A [`Library`] kept in a directory, with the modules it keeps.
+    /// A [`Library`] kept in a directory, with the modules it keeps and the
+    /// icons of its entries.
     ///
     /// Every change reads the file again first, so several processes can
     /// share a directory without losing each other's changes.
@@ -282,6 +296,7 @@ mod store {
                 return Ok(false);
             }
             write_atomic(&self.dir.join(LIBRARY), self.library.to_json().as_bytes())?;
+            self.prune()?;
             Ok(true)
         }
 
@@ -302,22 +317,16 @@ mod store {
             std::fs::read(self.dir.join(MODULES).join(module_file(url)?)).ok()
         }
 
-        /// Deletes the modules the library no longer keeps.
+        /// The downloaded icon at `src`, if [`Store::fetch_icon`] kept it.
+        pub fn icon(&self, src: &str) -> Option<Vec<u8>> {
+            std::fs::read(self.dir.join(ICONS).join(icon_file(src)?)).ok()
+        }
+
+        /// Deletes the modules the library no longer keeps, and the icons
+        /// no entry uses.
         pub fn prune(&self) -> io::Result<()> {
-            let keep = self.library.kept_modules();
-            let entries = match std::fs::read_dir(self.dir.join(MODULES)) {
-                Ok(e) => e,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-                Err(e) => return Err(e),
-            };
-            for entry in entries {
-                let entry = entry?;
-                let name = entry.file_name();
-                if !keep.iter().any(|k| name == k.as_str()) {
-                    std::fs::remove_file(entry.path())?;
-                }
-            }
-            Ok(())
+            prune_dir(&self.dir.join(MODULES), &self.library.kept_modules())?;
+            prune_dir(&self.dir.join(ICONS), &kept_icons(&self.library))
         }
     }
 
@@ -364,6 +373,51 @@ mod store {
                 }
             });
         }
+
+        /// Downloads the `https` icon at `src`, and keeps it if an entry
+        /// (as the library is on disk by then) uses it. Any executor may
+        /// await it; `None` if it could not be downloaded.
+        pub fn fetch_icon(
+            &self,
+            src: &str,
+        ) -> impl std::future::Future<Output = Option<Vec<u8>>> + Send + 'static {
+            let (dir, src) = (self.dir.clone(), src.to_string());
+            async move {
+                let file = icon_file(&src)?;
+                let url = Url::parse(&src).ok()?;
+                let bytes = crate::net::fetch_icon(&url).await.ok()?;
+                if kept_icons(&load(&dir)).contains(&file) {
+                    let _ = write_atomic(&dir.join(ICONS).join(file), &bytes);
+                }
+                Some(bytes)
+            }
+        }
+    }
+
+    /// The file names ([`icon_file`]) of the icons the entries use.
+    fn kept_icons(l: &Library) -> Vec<String> {
+        l.history
+            .iter()
+            .chain(&l.favorites)
+            .filter_map(|e| icon_file(e.icon.as_deref()?))
+            .collect()
+    }
+
+    /// Deletes the files in `dir` not named in `keep`.
+    fn prune_dir(dir: &Path, keep: &[String]) -> io::Result<()> {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        for entry in entries {
+            let entry = entry?;
+            let name = entry.file_name();
+            if !keep.iter().any(|k| name == k.as_str()) {
+                std::fs::remove_file(entry.path())?;
+            }
+        }
+        Ok(())
     }
 
     fn load(dir: &Path) -> Library {
@@ -492,6 +546,14 @@ mod tests {
     }
 
     #[test]
+    fn icon_files() {
+        assert!(icon_file("https://example.com/icon.png").is_some());
+        assert_eq!(icon_file("http://example.com/icon.png"), None);
+        assert_eq!(icon_file("data:image/png;base64,AAAA"), None);
+        assert_eq!(icon_file("icon.png"), None);
+    }
+
+    #[test]
     fn json_round_trips_and_tolerates_missing_fields() {
         let mut l = Library::default();
         l.visit(&url("example.com"), 5);
@@ -522,6 +584,16 @@ mod tests {
         a.set_favorite(&app, false).unwrap();
         assert!(!file.exists());
         assert_eq!(a.module(&app), None);
+        // An icon stays while an entry uses it.
+        let src = "https://example.com/icon.png";
+        let icon = dir.join("icons").join(icon_file(src).unwrap());
+        std::fs::create_dir_all(icon.parent().unwrap()).unwrap();
+        std::fs::write(&icon, b"png").unwrap();
+        let site = url("example.com");
+        assert!(a.describe(&site, &Metadata::new().icon(src)).unwrap());
+        assert_eq!(a.icon(src).as_deref(), Some(&b"png"[..]));
+        assert!(a.describe(&site, &Metadata::new().icon("data:,x")).unwrap());
+        assert!(!icon.exists());
         std::fs::write(dir.join("library.json"), "garbage").unwrap();
         assert_eq!(Store::open(&dir).library(), &Library::default());
         assert!(dir.join("library.json.broken").exists());
