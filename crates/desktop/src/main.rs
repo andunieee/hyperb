@@ -228,14 +228,27 @@ impl Browser {
         content.set_margin_end(16);
         content.append(&heading);
         content.append(&key);
-        gtk::Window::builder()
+        // Window managers without decorations (tiling ones) give no way to
+        // close the window, so offer a button and Escape too.
+        let close = gtk::Button::with_label("Close");
+        close.set_halign(gtk::Align::End);
+        close.set_margin_top(10);
+        close.set_action_name(Some("window.close"));
+        content.append(&close);
+        let window = gtk::Window::builder()
             .title("Settings")
             .transient_for(&self.window)
             .modal(true)
             .resizable(false)
             .child(&content)
-            .build()
-            .present();
+            .build();
+        let escape = gtk::ShortcutController::new();
+        escape.add_shortcut(gtk::Shortcut::new(
+            gtk::ShortcutTrigger::parse_string("Escape"),
+            Some(gtk::NamedAction::new("window.close")),
+        ));
+        window.add_controller(escape);
+        window.present();
     }
 
     /// Opens each address in a new tab, or an empty tab if there are none
