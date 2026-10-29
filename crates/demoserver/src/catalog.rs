@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub const REPO: &str = "https://github.com/andunieee/hyperb";
+pub const REPO: &str = "https://github.com/hypereffect/hyperb";
 
 pub static CATALOG: OnceLock<Catalog> = OnceLock::new();
 

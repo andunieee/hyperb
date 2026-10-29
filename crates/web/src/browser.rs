@@ -591,7 +591,7 @@ fn Welcome(ctx: Ctx, open: Callback<String>) -> impl IntoView {
             <h1 class="he-h1">"hyperb"</h1>
             <p class="he-caption">
                 "A browser for "
-                <a class="hb-link" href="https://github.com/andunieee/hyperb">"hyperb"</a>
+                <a class="hb-link" href="https://github.com/hypereffect/hyperb">"hyperb"</a>
                 " apps."
             </p>
             <LibraryView ctx limit=12 open/>

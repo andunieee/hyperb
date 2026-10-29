@@ -459,7 +459,7 @@ private fun Welcome(b: Browser) {
                 Text(
                     buildAnnotatedString {
                         append("A browser for ")
-                        withLink(LinkAnnotation.Url("https://github.com/andunieee/hyperb")) {
+                        withLink(LinkAnnotation.Url("https://github.com/hypereffect/hyperb")) {
                             withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)) {
                                 append("hyperb")
                             }

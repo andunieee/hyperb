@@ -583,7 +583,7 @@ fn welcome(library: gtk::Box) -> gtk::Widget {
     title.add_css_class("he-v-h1");
     let hint = gtk::Label::new(None);
     hint.set_markup(
-        r#"A browser for <a href="https://github.com/andunieee/hyperb">hyperb</a> apps."#,
+        r#"A browser for <a href="https://github.com/hypereffect/hyperb">hyperb</a> apps."#,
     );
     hint.add_css_class("he-v-caption");
     b.append(&title);
