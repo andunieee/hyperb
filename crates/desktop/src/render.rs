@@ -15,7 +15,7 @@ use gtk::prelude::*;
 use gtk::{gdk, glib, pango};
 use gtk4 as gtk;
 use hyperb_core::hypereffect::client::{Changes, Client, Resolved};
-use hyperb_core::hypereffect::{json, Component, Map, Value};
+use hyperb_core::hypereffect::{Component, Map, Value, json};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap};
 use std::rc::{Rc, Weak};
@@ -698,10 +698,10 @@ impl Renderer {
                     detach(o);
                     stack.add_titled(o, Some(cid.as_str()), cid.as_str());
                 }
-                if let Some(name) = selected {
-                    if stack.child_by_name(&name).is_some() {
-                        stack.set_visible_child_name(&name);
-                    }
+                if let Some(name) = selected
+                    && stack.child_by_name(&name).is_some()
+                {
+                    stack.set_visible_child_name(&name);
                 }
             }
             (_, Some(b)) => sync_box(b, &outers),
@@ -1143,10 +1143,10 @@ impl Renderer {
         let selected = wanted
             .filter(|w| shown.contains(&w))
             .or_else(|| shown.first().map(|s| s.to_string()));
-        if let Some(sel) = selected {
-            if current.as_deref() != Some(&sel) {
-                stack.set_visible_child_name(&sel);
-            }
+        if let Some(sel) = selected
+            && current.as_deref() != Some(&sel)
+        {
+            stack.set_visible_child_name(&sel);
         }
     }
 }
@@ -1155,10 +1155,10 @@ impl Renderer {
 
 /// Runs `f` with the tab, unless it is gone or applying changes.
 fn with_host(h: &Weak<Tab>, f: impl FnOnce(&Rc<Tab>)) {
-    if let Some(t) = h.upgrade() {
-        if !t.is_quiet() {
-            f(&t)
-        }
+    if let Some(t) = h.upgrade()
+        && !t.is_quiet()
+    {
+        f(&t)
     }
 }
 

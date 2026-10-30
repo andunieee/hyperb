@@ -8,7 +8,7 @@
 //! `running` signal.
 
 use super::common::number;
-use hypereffect::{cel, json, ui, Action, App, Handler, Outbox};
+use hypereffect::{Action, App, Handler, Outbox, cel, json, ui};
 use std::collections::BTreeMap;
 
 /// How often the countdown is refreshed while running.

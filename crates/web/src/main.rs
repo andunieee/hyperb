@@ -2,8 +2,8 @@
 #[tokio::main]
 async fn main() {
     use axum::Router;
-    use hyperb_web::{shell, App};
-    use leptos_axum::{file_and_error_handler, generate_route_list, LeptosRoutes};
+    use hyperb_web::{App, shell};
+    use leptos_axum::{LeptosRoutes, file_and_error_handler, generate_route_list};
 
     // Read [package.metadata.leptos] directly so a plain `cargo run` works;
     // under cargo-leptos its LEPTOS_* env vars override these values.

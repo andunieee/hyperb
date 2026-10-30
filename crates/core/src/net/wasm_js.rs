@@ -28,7 +28,7 @@ pub(super) async fn run(
     let bytes = match module {
         Some(m) => m,
         None if address::kind(&url) == Kind::LocalWasm => {
-            return Err("the browser cannot open local apps".into())
+            return Err("the browser cannot open local apps".into());
         }
         None => super::download(&url).await?,
     };

@@ -7,12 +7,12 @@
 //! The workspace is remembered by the admin's key, so changes survive
 //! reconnecting, and every change is stamped with the key in the audit log.
 
-use super::chart::{draw, Point, PALETTE};
+use super::chart::{PALETTE, Point, draw};
 use super::common::{group, menu, number, param_key, replace, text};
 use super::img;
 use super::store;
 use hyperb_core::identity::PublicKey;
-use hypereffect::{cel, json, ui, Action, App, Element, Handler, Map, Outbox, Value};
+use hypereffect::{Action, App, Element, Handler, Map, Outbox, Value, cel, json, ui};
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
@@ -806,13 +806,14 @@ mod tests {
         let key = Identity::generate().public();
         let mut l = connect::<Saas>(key);
         assert!(stat(&l, "kpi_mrr").starts_with("MRR $"));
-        assert!(l
-            .client
-            .attr("chart_mrr", "src")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .starts_with("data:image/png"));
+        assert!(
+            l.client
+                .attr("chart_mrr", "src")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png")
+        );
         assert_eq!(stat(&l, "count"), "36 customers");
         assert_eq!(stat(&l, "page"), "Page 1 of 6");
         assert_eq!(l.client.attr("prev", "disabled"), Some(json!(true)));
@@ -866,13 +867,14 @@ mod tests {
             assert!(row.as_str().unwrap().ends_with("100 seats"));
         }
         assert_ne!(stat(&l, "kpi_mrr"), mrr_before);
-        assert!(l
-            .client
-            .attr("audit_0", "text")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .contains("to enterprise, 100 seats"));
+        assert!(
+            l.client
+                .attr("audit_0", "text")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .contains("to enterprise, 100 seats")
+        );
         // Suspending drops its revenue; reactivating brings it back.
         let with = stat(&l, "kpi_mrr");
         assert!(trigger(&mut l, key, "sel_suspend", "onPress"));
@@ -885,13 +887,14 @@ mod tests {
         assert_eq!(stat(&l, "kpi_mrr"), with);
         // Impersonating is recorded too.
         assert!(trigger(&mut l, key, "sel_impersonate", "onPress"));
-        assert!(l
-            .client
-            .attr("audit_0", "text")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .contains("impersonation"));
+        assert!(
+            l.client
+                .attr("audit_0", "text")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .contains("impersonation")
+        );
         // Cancelling locks the customer.
         assert!(trigger(&mut l, key, "sel_cancel", "onPress"));
         assert_eq!(l.client.attr("sel_save", "disabled"), Some(json!(true)));
@@ -901,20 +904,22 @@ mod tests {
         // A new session with the same key finds the changes and the log.
         drop(l);
         let l = connect::<Saas>(key);
-        assert!(l
-            .client
-            .attr("audit_0", "text")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .contains("cancelled the subscription"));
-        assert!(l
-            .client
-            .attr("audit_0", "text")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .contains(&short(&key)));
+        assert!(
+            l.client
+                .attr("audit_0", "text")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .contains("cancelled the subscription")
+        );
+        assert!(
+            l.client
+                .attr("audit_0", "text")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .contains(&short(&key))
+        );
         // Another admin has a workspace of their own.
         let other = connect::<Saas>(Identity::generate().public());
         assert_eq!(other.client.attr("audit_0", "visible"), Some(json!(false)));
@@ -941,13 +946,14 @@ mod tests {
         );
         l.write("flags.sso.rollout", json!(40));
         assert!(trigger(&mut l, key, "flag_sso_save", "onPress"));
-        assert!(l
-            .client
-            .attr("audit_0", "text")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .contains("enabled Single sign-on at 40%"));
+        assert!(
+            l.client
+                .attr("audit_0", "text")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .contains("enabled Single sign-on at 40%")
+        );
         // Reset puts the data back.
         assert!(trigger(&mut l, key, "reset", "onPress"));
         assert_eq!(stat(&l, "kpi_mrr"), before);

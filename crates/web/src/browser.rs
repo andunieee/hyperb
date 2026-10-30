@@ -19,7 +19,7 @@ use crate::render::Children;
 use crate::store;
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
-use hyperb_core::hypereffect::{Component, Map, Value};
+use hyperb_core::hypereffect::{Component, Value};
 use hyperb_core::identity::Identity;
 use hyperb_core::library::{Entry, Library};
 use hyperb_core::net::{Connection, Event};
@@ -264,10 +264,10 @@ impl Ctx {
     /// any, then runs the handler in attribute `event`, if any.
     pub fn input(self, id: &str, value: Option<Value>, event: Option<&str>) {
         let line = self.client.try_update_value(|c| {
-            if let Some(v) = value {
-                if let Some(Value::String(path)) = c.attr(id, "bind") {
-                    c.write(&path, v);
-                }
+            if let Some(v) = value
+                && let Some(Value::String(path)) = c.attr(id, "bind")
+            {
+                c.write(&path, v);
             }
             let line = event.and_then(|e| c.trigger(id, e));
             (line, c.take_opens())

@@ -12,8 +12,8 @@
 //! graphical session, and the status line shows them for a while either way.
 //! A hyperb address replaces the session, as there is only one.
 
-use crate::page::{Action, Page, ACCENT, SPINNER};
 use crate::Msg;
+use crate::page::{ACCENT, Action, Page, SPINNER};
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::{Client, ResolvedTree};
 use hyperb_core::identity::Identity;
@@ -220,10 +220,10 @@ impl Browser {
             app = self.open(&url).or(app);
         }
         // The action still goes to the app that asked to open the address.
-        if let Some(line) = line {
-            if let Some(c) = &self.session.conn {
-                c.send(line);
-            }
+        if let Some(line) = line
+            && let Some(c) = &self.session.conn
+        {
+            c.send(line);
         }
         if let Some(url) = app {
             self.title = address::label(&url);

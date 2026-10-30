@@ -7,7 +7,7 @@
 //! much of the bill is still unpaid.
 
 use super::common::{money, parse_cents};
-use hypereffect::{cel, json, ui, Action, App, Handler, Map, Outbox, Value};
+use hypereffect::{Action, App, Handler, Map, Outbox, Value, cel, json, ui};
 use std::collections::BTreeMap;
 
 #[derive(Default)]

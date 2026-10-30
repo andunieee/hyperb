@@ -47,7 +47,7 @@ pub struct Connection {
 impl Connection {
     /// Opens a session at `url`, authenticated as `identity`.
     pub fn open(url: &Url, identity: &Identity) -> Self {
-        Self::start(url, Source::Identity(identity.clone()))
+        Self::start(url, Source::Identity(Box::new(identity.clone())))
     }
 
     /// Opens a wasm app session at `url` that runs `module` instead of
@@ -74,9 +74,9 @@ impl Connection {
                         };
                         wasm::run(url, module, out_rx, &ev_tx).await
                     }
-                    (Kind::Http, Source::Identity(id)) => http::run(url, id, out_rx, &ev_tx).await,
+                    (Kind::Http, Source::Identity(id)) => http::run(url, *id, out_rx, &ev_tx).await,
                     #[cfg(feature = "iroh")]
-                    (Kind::Iroh, Source::Identity(id)) => iroh::run(url, id, out_rx, &ev_tx).await,
+                    (Kind::Iroh, Source::Identity(id)) => iroh::run(url, *id, out_rx, &ev_tx).await,
                     #[allow(unreachable_patterns)]
                     (k, Source::Identity(_)) => {
                         Err(format!("{k:?} sessions are not available in this build"))
@@ -116,7 +116,9 @@ impl Connection {
 /// What a session starts from: the renderer's identity, or for wasm apps
 /// (which have none) possibly the module to run.
 enum Source {
-    Identity(Identity),
+    // Boxed: `Identity` is much larger than `Module`, and the box keeps the
+    // enum (moved into the transport task) small.
+    Identity(Box<Identity>),
     #[cfg(feature = "wasm")]
     Module(Vec<u8>),
 }

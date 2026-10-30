@@ -11,7 +11,7 @@ use harper_core::linting::{Lint, LintGroup, Linter, Suggestion};
 use harper_core::parsers::PlainEnglish;
 use harper_core::spell::FstDictionary;
 use harper_core::{Dialect, Document};
-use hypereffect::{cel, json, ui, Action, App, Element, Handler, Outbox, Value};
+use hypereffect::{Action, App, Element, Handler, Outbox, Value, cel, json, ui};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -258,11 +258,11 @@ impl App for Grammar {
                 // left for the next round.
                 let mut edge = usize::MAX;
                 for issue in check(&source, &dialect_name).iter().rev() {
-                    if let Some(fix) = issue.lint.suggestions.first() {
-                        if issue.lint.span.end <= edge {
-                            fixed = apply(&fixed, &issue.lint, fix);
-                            edge = issue.lint.span.start;
-                        }
+                    if let Some(fix) = issue.lint.suggestions.first()
+                        && issue.lint.span.end <= edge
+                    {
+                        fixed = apply(&fixed, &issue.lint, fix);
+                        edge = issue.lint.span.start;
                     }
                 }
                 out.signal(json!({"form": {"text": fixed}}));

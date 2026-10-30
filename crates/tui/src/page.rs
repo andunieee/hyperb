@@ -11,7 +11,7 @@
 
 use crate::edit::{Edit, Editor};
 use hyperb_core::hypereffect::client::{Client, ResolvedTree};
-use hyperb_core::hypereffect::{json, Component, Map, Value};
+use hyperb_core::hypereffect::{Component, Map, Value, json};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
@@ -236,10 +236,10 @@ impl Page {
             return Vec::new();
         }
         let flushed = self.focus.take().and_then(|old| self.flush(&old));
-        if let Some(id) = &id {
-            if let Some(ed) = self.inputs.get_mut(id) {
-                ed.cursor_to_end();
-            }
+        if let Some(id) = &id
+            && let Some(ed) = self.inputs.get_mut(id)
+        {
+            ed.cursor_to_end();
         }
         self.focus = id;
         self.reveal = true;
@@ -290,10 +290,10 @@ impl Page {
             .as_deref()
             .filter(|id| self.layer().focus_rect(id).is_some())
             .and_then(|id| find(tree, id));
-        if let Some(n) = focused {
-            if let Some(acts) = self.control_key(n, k, client) {
-                return acts;
-            }
+        if let Some(n) = focused
+            && let Some(acts) = self.control_key(n, k, client)
+        {
+            return acts;
         }
         let page = self.layer().clip.height.max(2) as i32 - 1;
         match k.code {

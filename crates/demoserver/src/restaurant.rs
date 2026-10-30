@@ -7,7 +7,7 @@
 
 use super::store;
 use hyperb_core::identity::PublicKey;
-use hypereffect::{json, ui, App, Handler, Map, Outbox, Value};
+use hypereffect::{App, Handler, Map, Outbox, Value, json, ui};
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 

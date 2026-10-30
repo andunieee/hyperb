@@ -18,6 +18,8 @@ pub struct Catalog {
 }
 
 pub struct Wasm {
+    /// The canonical path of the module; only the tests read it.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub path: PathBuf,
     pub bytes: Vec<u8>,
 }
@@ -209,8 +211,10 @@ mod tests {
 
     #[test]
     fn page_lists_every_address() {
-        let mut catalog = Catalog::default();
-        catalog.iroh_id = Some("a".repeat(64));
+        let catalog = Catalog {
+            iroh_id: Some("a".repeat(64)),
+            ..Default::default()
+        };
         let page = catalog.page("localhost:9001");
         assert!(page.contains("hyperb://localhost:9001/restaurant"));
         assert!(page.contains(&format!("hyperb://{}/qr", "a".repeat(64))));

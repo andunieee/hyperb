@@ -78,10 +78,10 @@ pub fn download(url: Url) {
         let Some(name) = library::module_file(&url) else {
             return;
         };
-        if load().keeps_module(&url) {
-            if let Err(e) = write(&name, &bytes).await {
-                warn!("cannot keep {url}: {e:?}");
-            }
+        if load().keeps_module(&url)
+            && let Err(e) = write(&name, &bytes).await
+        {
+            warn!("cannot keep {url}: {e:?}");
         }
     });
 }

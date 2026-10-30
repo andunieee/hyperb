@@ -6,8 +6,8 @@
 //! a PNG and sends it as a `data:` URI.
 
 use super::common::{feedback, menu, text};
-use super::img::{self, text_width, Canvas, Rgb};
-use hypereffect::{cel, json, ui, Action, App, Handler, Outbox};
+use super::img::{self, Canvas, Rgb, text_width};
+use hypereffect::{Action, App, Handler, Outbox, cel, json, ui};
 use std::collections::BTreeMap;
 
 const W: i32 = 640;

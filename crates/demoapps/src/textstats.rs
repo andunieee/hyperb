@@ -5,7 +5,7 @@
 //! the number of unique words and the five most used words. This one holds
 //! no memory between sessions.
 
-use hypereffect::{json, ui, Action, App, Handler, Outbox, Value};
+use hypereffect::{Action, App, Handler, Outbox, Value, json, ui};
 use std::collections::BTreeMap;
 
 /// How many top words to rank.

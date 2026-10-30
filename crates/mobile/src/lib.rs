@@ -18,7 +18,7 @@
 
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
-use hyperb_core::hypereffect::{json, serde_json, Value};
+use hyperb_core::hypereffect::{Value, json, serde_json};
 use hyperb_core::identity::Identity;
 use hyperb_core::library::{Entry, Store};
 use hyperb_core::net::{Connection, Event};
@@ -94,10 +94,11 @@ impl Inner {
         for d in self.client.take_diagnostics() {
             log::warn!("[{}] {d}", self.url);
         }
-        if self.client.take_changes().metadata && self.entry.describe(self.client.metadata()) {
-            if let Err(e) = store().describe(&self.url, self.client.metadata()) {
-                log::warn!("cannot save the history: {e}");
-            }
+        if self.client.take_changes().metadata
+            && self.entry.describe(self.client.metadata())
+            && let Err(e) = store().describe(&self.url, self.client.metadata())
+        {
+            log::warn!("cannot save the history: {e}");
         }
         let mut tree = serde_json::to_value(self.client.tree()).unwrap_or_default();
         self.add_bound_values(&mut tree);
@@ -127,11 +128,11 @@ impl Inner {
             return;
         };
         for n in nodes {
-            if let Some(attrs) = n.get_mut("attrs").and_then(Value::as_object_mut) {
-                if let Some(path) = attrs.get("bind").and_then(Value::as_str) {
-                    let v = self.client.value(path).cloned().unwrap_or(Value::Null);
-                    attrs.insert("$value".into(), v);
-                }
+            if let Some(attrs) = n.get_mut("attrs").and_then(Value::as_object_mut)
+                && let Some(path) = attrs.get("bind").and_then(Value::as_str)
+            {
+                let v = self.client.value(path).cloned().unwrap_or(Value::Null);
+                attrs.insert("$value".into(), v);
             }
             if let Some(kids) = n.get_mut("children") {
                 self.add_bound_values(kids);
@@ -145,15 +146,15 @@ impl Inner {
     /// `{"url", "app"}`: `app` for a hyperb address (in its `hyperb://`
     /// form), which the app opens itself.
     fn input(&mut self, id: &str, value: Option<Value>, event: Option<&str>) -> Vec<Value> {
-        if let Some(v) = value {
-            if let Some(Value::String(path)) = self.client.attr(id, "bind") {
-                self.client.write(&path, v);
-            }
+        if let Some(v) = value
+            && let Some(Value::String(path)) = self.client.attr(id, "bind")
+        {
+            self.client.write(&path, v);
         }
-        if let Some(line) = event.and_then(|e| self.client.trigger(id, e)) {
-            if let Some(c) = &self.conn {
-                c.send(line);
-            }
+        if let Some(line) = event.and_then(|e| self.client.trigger(id, e))
+            && let Some(c) = &self.conn
+        {
+            c.send(line);
         }
         let mut opens = Vec::new();
         for url in self.client.take_opens() {
@@ -187,7 +188,7 @@ fn opt_string(env: &Env, s: &JString) -> jni::errors::Result<Option<String>> {
 
 /// `init(context: Context, filesDir: String): String`. Call once before
 /// anything else; returns the identity's public key.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_init(
     mut env: EnvUnowned<'_>,
     _class: JClass,
@@ -222,7 +223,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_init(
 /// `open(address: String, link: Boolean, reload: Boolean): Long`: opens a
 /// session, which unless `reload` goes to the history. Links (from other
 /// apps) cannot open local files. Throws if the address is invalid.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_open(
     mut env: EnvUnowned<'_>,
     _class: JClass,
@@ -246,10 +247,8 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_open(
         };
         let identity = IDENTITY.get_or_init(Identity::generate);
         let mut store = store();
-        if !reload {
-            if let Err(e) = store.visit(&url) {
-                log::warn!("cannot save the history: {e}");
-            }
+        if !reload && let Err(e) = store.visit(&url) {
+            log::warn!("cannot save the history: {e}");
         }
         store.reload();
         let entry = store
@@ -274,7 +273,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_open(
 }
 
 /// `cancel(handle: Long)`: ends the session, waking a pending `await`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_cancel(
     _env: EnvUnowned<'_>,
     _class: JClass,
@@ -288,7 +287,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_cancel(
 }
 
 /// `free(handle: Long)`: releases a session once `await` returned false.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_free(
     _env: EnvUnowned<'_>,
     _class: JClass,
@@ -302,7 +301,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_free(
 
 /// `await(handle: Long): Boolean`. Blocks until network events arrive and
 /// applies them; false once the session is over and nothing more will come.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_await(
     _env: EnvUnowned<'_>,
     _class: JClass,
@@ -321,7 +320,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_await(
 
 /// `snapshot(handle: Long): String`: the connection state and the resolved
 /// tree, as JSON.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_snapshot(
     mut env: EnvUnowned<'_>,
     _class: JClass,
@@ -337,7 +336,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_snapshot(
 /// `input(handle: Long, id: String, value: String?, event: String?): String`,
 /// with `value` as JSON. Returns the URLs to open, as a JSON array of
 /// `{"url": String, "app": Boolean}` (`app` for a hyperb address).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_input(
     mut env: EnvUnowned<'_>,
     _class: JClass,
@@ -362,7 +361,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_input(
 
 /// `library(): String`: the history and favorites, as JSON
 /// (`hyperb_core::library::Library`).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_library(
     mut env: EnvUnowned<'_>,
     _class: JClass,
@@ -378,7 +377,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_library(
 /// `icon(src: String): ByteArray?`: the `https` icon at `src`, downloaded
 /// (and kept while an entry uses it) unless it already was; null if it
 /// cannot be. Blocks while downloading, so call it off the main thread.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_icon(
     mut env: EnvUnowned<'_>,
     _class: JClass,
@@ -403,7 +402,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_icon(
 /// `setFavorite(address: String, on: Boolean): String`: adds or removes a
 /// favorite and returns the library. A new favorite wasm app is downloaded
 /// to be kept.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_setFavorite(
     mut env: EnvUnowned<'_>,
     _class: JClass,
@@ -427,7 +426,7 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_setFavorite(
 
 /// `forget(address: String?): String`: removes an address from the history,
 /// or with null clears it, and returns the library.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_forget(
     mut env: EnvUnowned<'_>,
     _class: JClass,

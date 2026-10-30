@@ -11,7 +11,7 @@
 //! on the server and shows itself through signals.
 
 use super::common::group;
-use hypereffect::{cel, json, ui, Action, App, Handler, Outbox, Value};
+use hypereffect::{Action, App, Handler, Outbox, Value, cel, json, ui};
 use std::collections::BTreeMap;
 
 /// Keys in display order, by row: code, label, variant.
@@ -230,7 +230,7 @@ impl Finance {
             _ => {
                 return solve(|i| self.tvm_equation(i))
                     .map(|i| i * 100.0)
-                    .ok_or("Error: no solution for i")
+                    .ok_or("Error: no solution for i");
             }
         };
         if r.is_finite() {
@@ -489,7 +489,7 @@ impl Finance {
         let typed = self.storable;
         match key {
             "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "dot" => {
-                return self.type_char(key)
+                return self.type_char(key);
             }
             "chs" => return self.change_sign(),
             "bksp" => return self.backspace(),
@@ -747,10 +747,10 @@ impl App for Finance {
         if let Some(d) = action.signal("settings.decimals").and_then(Value::as_f64) {
             self.decimals = d.clamp(0.0, 9.0) as usize;
         }
-        if action.name == "key" {
-            if let Some(key) = action.payload.as_ref().and_then(Value::as_str) {
-                self.press(key);
-            }
+        if action.name == "key"
+            && let Some(key) = action.payload.as_ref().and_then(Value::as_str)
+        {
+            self.press(key);
         }
         self.show(out);
     }

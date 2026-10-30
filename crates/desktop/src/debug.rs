@@ -7,8 +7,8 @@ use crate::tab::Tab;
 use gtk::prelude::*;
 use gtk::{glib, pango};
 use gtk4 as gtk;
-use hyperb_core::hypereffect::client::Client;
 use hyperb_core::hypereffect::Value;
+use hyperb_core::hypereffect::client::Client;
 use std::cell::RefCell;
 use std::rc::Weak;
 

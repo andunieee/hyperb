@@ -1,10 +1,10 @@
 //! The renderer side of [`crate::http`], on reqwest (fetch on wasm32).
 
-use crate::http::{event_to_line, KEY, SESSION, SIGNATURE};
+use crate::http::{KEY, SESSION, SIGNATURE, event_to_line};
 use crate::identity::Identity;
 use crate::net::Event;
 use crate::sse;
-use futures_util::{future, pin_mut, StreamExt};
+use futures_util::{StreamExt, future, pin_mut};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use reqwest::{Client, RequestBuilder, Response};
 use url::Url;

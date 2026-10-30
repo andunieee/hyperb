@@ -7,7 +7,7 @@
 //! and type console commands.
 
 use super::common::{menu, number, replace, text};
-use hypereffect::{cel, json, ui, Action, App, Element, Handler, Outbox, Value};
+use hypereffect::{Action, App, Element, Handler, Outbox, Value, cel, json, ui};
 use std::collections::BTreeMap;
 
 const TICK_MS: u32 = 1000;
@@ -992,13 +992,14 @@ mod tests {
         for t in 0..60 {
             l.tick(t as f64);
         }
-        assert!(l
-            .client
-            .attr("uptime", "text")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .contains("1m"));
+        assert!(
+            l.client
+                .attr("uptime", "text")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .contains("1m")
+        );
         let tps = l.client.attr("tps_badge", "text").unwrap();
         assert!(tps.as_str().unwrap().starts_with("TPS "));
         // Stop.
@@ -1035,14 +1036,15 @@ mod tests {
         assert!(l.client.contains(&format!("kick_{name}")));
         // Kick.
         assert!(l.trigger(&format!("kick_{name}"), "onPress"));
-        assert!(!l
-            .client
-            .value("online")
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|v| v == &json!(name)));
+        assert!(
+            !l.client
+                .value("online")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == &json!(name))
+        );
         assert!(!l.client.contains(&format!("kick_{name}")));
         // Ban another; the ban shows and can be lifted.
         let other = l.client.value("online").unwrap()[0]
@@ -1123,13 +1125,14 @@ mod tests {
             l.tick(t as f64);
         }
         assert_eq!(l.client.attr("backup", "disabled"), Some(json!(false)));
-        assert!(l
-            .client
-            .attr("backup_bar", "label")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .starts_with("Last backup: 09:"));
+        assert!(
+            l.client
+                .attr("backup_bar", "label")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .starts_with("Last backup: 09:")
+        );
         // Settings.
         l.write("cfg.motd", json!("Hello there"));
         l.write("cfg.max_players", json!(5));

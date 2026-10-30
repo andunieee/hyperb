@@ -220,7 +220,7 @@ pub fn icon_file(src: &str) -> Option<String> {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod store {
-    use super::{icon_file, module_file, Library};
+    use super::{Library, icon_file, module_file};
     use std::io;
     use std::path::{Path, PathBuf};
     use url::Url;

@@ -10,7 +10,7 @@
 
 use crate::browser::Ctx;
 use hyperb_core::hypereffect::client::Client;
-use hyperb_core::hypereffect::{json, Component, Map, Value};
+use hyperb_core::hypereffect::{Component, Map, Value, json};
 use leptos::html;
 use leptos::prelude::*;
 use std::time::Duration;

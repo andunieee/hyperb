@@ -56,27 +56,27 @@ fn normalize_address(input: &str) -> Result<Url, String> {
         Some(host) => host,
         None => return Err("missing host".into()),
     };
-    if let Host::Domain(d) = &host {
-        if is_endpoint_id(d) {
-            if forced.is_some() {
-                return Err("an iroh address cannot use http or https".into());
-            }
-            if rest
-                .split(['/', '?', '#'])
-                .next()
-                .is_some_and(|a| a.contains(':'))
-            {
-                return Err("an iroh address has no port".into());
-            }
-            if url.query().is_some() {
-                return Err("an iroh address has no query".into());
-            }
-            let mut out = format!("iroh://{}{}", d.to_ascii_lowercase(), url.path());
-            if let Some(f) = url.fragment() {
-                out.push_str(&format!("#{f}"));
-            }
-            return parse(&out);
+    if let Host::Domain(d) = &host
+        && is_endpoint_id(d)
+    {
+        if forced.is_some() {
+            return Err("an iroh address cannot use http or https".into());
         }
+        if rest
+            .split(['/', '?', '#'])
+            .next()
+            .is_some_and(|a| a.contains(':'))
+        {
+            return Err("an iroh address has no port".into());
+        }
+        if url.query().is_some() {
+            return Err("an iroh address has no query".into());
+        }
+        let mut out = format!("iroh://{}{}", d.to_ascii_lowercase(), url.path());
+        if let Some(f) = url.fragment() {
+            out.push_str(&format!("#{f}"));
+        }
+        return parse(&out);
     }
     let scheme = forced.unwrap_or(if is_plain_host(&host) {
         "http"
@@ -310,12 +310,13 @@ fn percent_decode(s: &str) -> Vec<u8> {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(v);
+            i += 3;
+            continue;
         }
         out.push(b[i]);
         i += 1;

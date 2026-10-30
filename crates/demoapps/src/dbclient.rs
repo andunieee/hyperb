@@ -7,7 +7,7 @@
 //! aligned text and paged; past queries can be recalled.
 
 use super::common::menu;
-use hypereffect::{cel, json, ui, Action, App, Handler, Outbox, Value};
+use hypereffect::{Action, App, Handler, Outbox, Value, cel, json, ui};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -289,7 +289,7 @@ fn tokenize(src: &str) -> Result<Vec<(Tok, usize, usize)>, String> {
                         return Err(format!(
                             "Unterminated string starting at position {}.",
                             at + 1
-                        ))
+                        ));
                     }
                     Some((_, '\'')) if chars.get(j + 1).is_some_and(|(_, q)| *q == '\'') => {
                         s.push('\'');
@@ -334,7 +334,7 @@ fn tokenize(src: &str) -> Result<Vec<(Tok, usize, usize)>, String> {
                     return Err(format!(
                         "Unexpected character '{c}' at position {}.",
                         at + 1
-                    ))
+                    ));
                 }
             };
             toks.push((Tok::Sym(sym), at, at + c.len_utf8()));
@@ -938,7 +938,7 @@ fn eval(e: &Expr, cx: &Cx) -> Result<Cell, String> {
                     return Err(format!(
                         "Unknown column '{}.{name}'.",
                         table.as_deref().unwrap_or("")
-                    ))
+                    ));
                 }
                 _ => return Err(format!("Column '{name}' is ambiguous: say which table.")),
             }
@@ -1170,7 +1170,7 @@ fn run(db: &[Table], sql: &str) -> Result<Answer, String> {
                     .iter()
                     .map(|t| vec![Cell::text(t.name), Cell::Int(t.rows.len() as i64)])
                     .collect(),
-            })
+            });
         }
         ["describe" | "desc", t] => {
             return Ok(Answer {
@@ -1180,7 +1180,7 @@ fn run(db: &[Table], sql: &str) -> Result<Answer, String> {
                     .iter()
                     .map(|(n, ty)| vec![Cell::text(n), Cell::text(ty)])
                     .collect(),
-            })
+            });
         }
         [first, ..] if *first != "select" => {
             return Err(
@@ -1190,7 +1190,7 @@ fn run(db: &[Table], sql: &str) -> Result<Answer, String> {
                 } else {
                     format!("Expected SELECT, SHOW TABLES or DESCRIBE, not '{first}'.")
                 },
-            )
+            );
         }
         _ => {}
     }
@@ -1313,10 +1313,10 @@ fn run(db: &[Table], sql: &str) -> Result<Answer, String> {
             group,
             aliases: &aliases,
         };
-        if let Some(h) = &q.having {
-            if !eval(h, &cx)?.truthy() {
-                return Ok(());
-            }
+        if let Some(h) = &q.having
+            && !eval(h, &cx)?.truthy()
+        {
+            return Ok(());
         }
         let mut keys = Vec::new();
         for e in &order_exprs {
@@ -1419,13 +1419,34 @@ fn run(db: &[Table], sql: &str) -> Result<Answer, String> {
 
 const EXAMPLES: &[(&str, &str)] = &[
     ("Pick an example…", ""),
-    ("Customers on the pro plan", "SELECT name, country, signup\nFROM customers\nWHERE plan = 'pro'\nORDER BY country, name"),
-    ("Revenue by product", "SELECT p.name, SUM(o.total) AS revenue, COUNT(*) AS orders\nFROM orders o\nJOIN products p ON p.id = o.product_id\nWHERE o.status != 'cancelled'\nGROUP BY p.name\nORDER BY revenue DESC\nLIMIT 5"),
-    ("Orders per customer", "SELECT c.name, COUNT(o.id) AS orders\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nGROUP BY c.name\nORDER BY orders DESC, c.name"),
-    ("Customers who never ordered", "SELECT c.id, c.name\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nWHERE o.id IS NULL"),
-    ("Salary by department", "SELECT department, COUNT(*) AS people, AVG(salary) AS average, MAX(salary) AS top\nFROM employees\nGROUP BY department\nHAVING COUNT(*) > 1\nORDER BY average DESC"),
-    ("Who reports to whom", "SELECT e.name, m.name AS manager\nFROM employees e\nLEFT JOIN employees m ON m.id = e.manager_id\nORDER BY manager, e.name"),
-    ("Running low on stock", "SELECT name, category, stock\nFROM products\nWHERE stock < 50 OR name LIKE '%desk%'\nORDER BY stock"),
+    (
+        "Customers on the pro plan",
+        "SELECT name, country, signup\nFROM customers\nWHERE plan = 'pro'\nORDER BY country, name",
+    ),
+    (
+        "Revenue by product",
+        "SELECT p.name, SUM(o.total) AS revenue, COUNT(*) AS orders\nFROM orders o\nJOIN products p ON p.id = o.product_id\nWHERE o.status != 'cancelled'\nGROUP BY p.name\nORDER BY revenue DESC\nLIMIT 5",
+    ),
+    (
+        "Orders per customer",
+        "SELECT c.name, COUNT(o.id) AS orders\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nGROUP BY c.name\nORDER BY orders DESC, c.name",
+    ),
+    (
+        "Customers who never ordered",
+        "SELECT c.id, c.name\nFROM customers c\nLEFT JOIN orders o ON o.customer_id = c.id\nWHERE o.id IS NULL",
+    ),
+    (
+        "Salary by department",
+        "SELECT department, COUNT(*) AS people, AVG(salary) AS average, MAX(salary) AS top\nFROM employees\nGROUP BY department\nHAVING COUNT(*) > 1\nORDER BY average DESC",
+    ),
+    (
+        "Who reports to whom",
+        "SELECT e.name, m.name AS manager\nFROM employees e\nLEFT JOIN employees m ON m.id = e.manager_id\nORDER BY manager, e.name",
+    ),
+    (
+        "Running low on stock",
+        "SELECT name, category, stock\nFROM products\nWHERE stock < 50 OR name LIKE '%desk%'\nORDER BY stock",
+    ),
 ];
 
 #[derive(Default)]
@@ -1899,30 +1920,46 @@ mod tests {
     fn builtin_commands_and_errors() {
         assert_eq!(q("SHOW TABLES").unwrap().len(), 4);
         assert_eq!(q("describe orders;").unwrap().len(), 7);
-        assert!(q("SELEC * FROM customers")
-            .unwrap_err()
-            .contains("Expected SELECT"));
-        assert!(q("SELECT * FORM customers")
-            .unwrap_err()
-            .contains("near 'FORM'"));
-        assert!(q("SELECT * FROM nothing")
-            .unwrap_err()
-            .contains("Unknown table 'nothing'"));
-        assert!(q("SELECT nope FROM customers")
-            .unwrap_err()
-            .contains("Unknown column 'nope'"));
-        assert!(q("DELETE FROM customers")
-            .unwrap_err()
-            .contains("read-only"));
-        assert!(q("SELECT name FROM customers WHERE name = 'x")
-            .unwrap_err()
-            .contains("Unterminated"));
-        assert!(q("SELECT SUM(name) FROM customers")
-            .unwrap_err()
-            .contains("needs numbers"));
-        assert!(q("SELECT name FROM customers WHERE COUNT(*) > 1")
-            .unwrap_err()
-            .contains("not allowed here"));
+        assert!(
+            q("SELEC * FROM customers")
+                .unwrap_err()
+                .contains("Expected SELECT")
+        );
+        assert!(
+            q("SELECT * FORM customers")
+                .unwrap_err()
+                .contains("near 'FORM'")
+        );
+        assert!(
+            q("SELECT * FROM nothing")
+                .unwrap_err()
+                .contains("Unknown table 'nothing'")
+        );
+        assert!(
+            q("SELECT nope FROM customers")
+                .unwrap_err()
+                .contains("Unknown column 'nope'")
+        );
+        assert!(
+            q("DELETE FROM customers")
+                .unwrap_err()
+                .contains("read-only")
+        );
+        assert!(
+            q("SELECT name FROM customers WHERE name = 'x")
+                .unwrap_err()
+                .contains("Unterminated")
+        );
+        assert!(
+            q("SELECT SUM(name) FROM customers")
+                .unwrap_err()
+                .contains("needs numbers")
+        );
+        assert!(
+            q("SELECT name FROM customers WHERE COUNT(*) > 1")
+                .unwrap_err()
+                .contains("not allowed here")
+        );
         assert!(q("   ").is_err());
     }
 
@@ -1956,22 +1993,24 @@ mod tests {
         // Choosing an example fills the editor; running it records history.
         l.write("form.example", json!("2"));
         assert!(l.trigger("example", "onChange"));
-        assert!(l
-            .client
-            .value("form.sql")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .starts_with("SELECT p.name, SUM"));
+        assert!(
+            l.client
+                .value("form.sql")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .starts_with("SELECT p.name, SUM")
+        );
         assert!(l.trigger("run", "onPress"));
         assert_eq!(l.client.attr("hist_1", "visible"), Some(json!(true)));
-        assert!(l
-            .client
-            .attr("hist_0", "label")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .starts_with("SELECT p.name, SUM"));
+        assert!(
+            l.client
+                .attr("hist_0", "label")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .starts_with("SELECT p.name, SUM")
+        );
         assert!(l.trigger("hist_1", "onPress"));
         assert_eq!(
             l.client.value("form.sql"),

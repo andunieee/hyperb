@@ -3,10 +3,10 @@
 //! to open or to authenticate: one bidirectional stream carries the lines of
 //! one app instance, which ends with the stream.
 
-use crate::{app_at_path, start, Cmd, APPS};
-use hyperb_core::address::{iroh_alpn_path, IROH_ALPN};
+use crate::{APPS, Cmd, app_at_path, start};
+use hyperb_core::address::{IROH_ALPN, iroh_alpn_path};
 use hyperb_core::identity::{Identity, PublicKey};
-use iroh::endpoint::{presets, Connection, Incoming};
+use iroh::endpoint::{Connection, Incoming, presets};
 use iroh::{Endpoint, SecretKey};
 use tokio::sync::mpsc;
 

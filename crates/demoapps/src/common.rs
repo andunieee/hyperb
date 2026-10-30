@@ -1,6 +1,6 @@
 //! Helpers shared by the newer demos.
 
-use hypereffect::{json, Action, Element, Outbox, Value};
+use hypereffect::{Action, Element, Outbox, Value, json};
 
 /// Replaces the elements `ids` with `new`: the old ones are removed and the
 /// ids of the new ones remembered, for a part of the interface that is drawn

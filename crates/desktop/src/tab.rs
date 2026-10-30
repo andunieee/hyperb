@@ -20,7 +20,7 @@ use gtk::{gdk, gio, glib, pango};
 use gtk4 as gtk;
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
-use hyperb_core::hypereffect::{json, Value};
+use hyperb_core::hypereffect::{Value, json};
 use hyperb_core::identity::Identity;
 use hyperb_core::library::Entry;
 use hyperb_core::net::{Connection, Event};
@@ -449,10 +449,10 @@ impl Tab {
 
     fn set_favorite(&self, on: bool) {
         let url = self.session.borrow().url.clone();
-        if let Some(url) = url {
-            if self.library.is_favorite(&url) != on {
-                self.library.set_favorite(&url, on);
-            }
+        if let Some(url) = url
+            && self.library.is_favorite(&url) != on
+        {
+            self.library.set_favorite(&url, on);
         }
     }
 
@@ -496,11 +496,11 @@ impl Tab {
         for url in opens {
             self.open(&url);
         }
-        if let Some(line) = line {
-            if let Some(c) = &self.session.borrow().conn {
-                self.debug.log(Dir::Sent, &line);
-                c.send(line);
-            }
+        if let Some(line) = line
+            && let Some(c) = &self.session.borrow().conn
+        {
+            self.debug.log(Dir::Sent, &line);
+            c.send(line);
         }
         self.render();
     }

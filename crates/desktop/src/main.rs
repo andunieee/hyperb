@@ -226,10 +226,10 @@ impl Browser {
         {
             let b = Rc::downgrade(&b);
             notebook.connect_switch_page(move |_, page, _| {
-                if let Some(b) = b.upgrade() {
-                    if let Some(t) = b.tab_for(page) {
-                        b.window.set_title(Some(&window_title(&t)));
-                    }
+                if let Some(b) = b.upgrade()
+                    && let Some(t) = b.tab_for(page)
+                {
+                    b.window.set_title(Some(&window_title(&t)));
                 }
             });
         }

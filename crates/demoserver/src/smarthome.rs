@@ -7,10 +7,10 @@
 //! charted. Controls are ordinary bound signals that the server reads from
 //! each action; scenes and automations change them from the server.
 
-use super::chart::{draw, Point, PALETTE};
+use super::chart::{PALETTE, Point, draw};
 use super::common::{menu, number, replace, text};
 use super::img::{self, Canvas};
-use hypereffect::{cel, json, ui, Action, App, Element, Handler, Map, Outbox, Value};
+use hypereffect::{Action, App, Element, Handler, Map, Outbox, Value, cel, json, ui};
 use std::collections::BTreeMap;
 
 const TICK_MS: u32 = 1000;
@@ -414,12 +414,12 @@ impl SmartHome {
                 self.note(format!("Night setback: thermostat at {:.1}°", self.target));
                 changed = true;
             }
-            if self.crossed(before, 6 * 60) {
-                if let Some(t) = self.stashed_target.take() {
-                    self.target = t;
-                    self.note(format!("Morning: thermostat back to {t:.1}°"));
-                    changed = true;
-                }
+            if self.crossed(before, 6 * 60)
+                && let Some(t) = self.stashed_target.take()
+            {
+                self.target = t;
+                self.note(format!("Morning: thermostat back to {t:.1}°"));
+                changed = true;
             }
         }
         let open = self.windows.iter().any(|w| *w);
@@ -1146,10 +1146,12 @@ mod tests {
     fn armed_cameras_see_motion() {
         let mut l = new();
         let first = l.client.attr("shot_front", "src").unwrap();
-        assert!(first
-            .as_str()
-            .unwrap()
-            .starts_with("data:image/png;base64,"));
+        assert!(
+            first
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
         assert!(l.trigger("scene_away", "onPress"));
         // Nothing is seen by a camera that is off.
         l.write("cam.garden.armed", json!(false));

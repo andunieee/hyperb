@@ -32,7 +32,7 @@ mod glue {
 
     #[cfg(target_arch = "wasm32")]
     #[link(wasm_import_module = "hyperb")]
-    extern "C" {
+    unsafe extern "C" {
         fn send(ptr: *const u8, len: u32);
     }
 
@@ -44,12 +44,12 @@ mod glue {
     }
 
     /// A buffer for the renderer to write a line into; `receive` takes it back.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn alloc(len: u32) -> *mut u8 {
         Box::into_raw(vec![0u8; len as usize].into_boxed_slice()) as *mut u8
     }
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn receive(ptr: *mut u8, len: u32) {
         // SAFETY: `ptr` came from `alloc(len)` and is received once.
         let input = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len as usize)) };

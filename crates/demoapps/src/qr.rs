@@ -5,7 +5,7 @@
 
 use super::common::{feedback, menu, number, text};
 use super::img;
-use hypereffect::{cel, json, ui, Action, App, Handler, Outbox, Value};
+use hypereffect::{Action, App, Handler, Outbox, Value, cel, json, ui};
 use qrcode::{Color, EcLevel, QrCode};
 use std::collections::BTreeMap;
 

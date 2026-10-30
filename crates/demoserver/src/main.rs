@@ -35,18 +35,18 @@ mod smarthome;
 mod store;
 mod therapist;
 
+use axum::Router;
 use axum::extract::State;
-use axum::http::{header, HeaderMap, HeaderName, Method, StatusCode, Uri};
-use axum::response::sse::{self, KeepAlive, Sse};
+use axum::http::{HeaderMap, HeaderName, Method, StatusCode, Uri, header};
 use axum::response::Html;
+use axum::response::sse::{self, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
 use demoapps::{billsplit, chart, dbclient, finance, img, minecraft, qr, textstats};
 use futures_util::stream::{self, Stream, StreamExt};
-use hyperb_core::http::{line_to_event, KEY, SESSION, SIGNATURE};
+use hyperb_core::http::{KEY, SESSION, SIGNATURE, line_to_event};
 use hyperb_core::identity::{Identity, PublicKey};
-use hypereffect::{serde_json, App, Server};
+use hypereffect::{App, Server, serde_json};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
@@ -312,10 +312,11 @@ async fn run<A: App + Default>(
     tokio::pin!(deadline);
     loop {
         backlog.push_str(&server.output().take());
-        if let Some(tx) = &out {
-            if !backlog.is_empty() && tx.send(std::mem::take(&mut backlog)).is_err() {
-                break;
-            }
+        if let Some(tx) = &out
+            && !backlog.is_empty()
+            && tx.send(std::mem::take(&mut backlog)).is_err()
+        {
+            break;
         }
         let want = server.tick_interval();
         if want != ticker.as_ref().map(|t| t.0) {
