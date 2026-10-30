@@ -8,8 +8,9 @@ session. The hypereffect message protocol itself is not covered here.
 Status: all of it is implemented in `hyperb-core` (`address.rs`, `http.rs`,
 and `net/iroh.rs`, `net/wasm.rs` behind the `iroh` and `wasm` features). The
 desktop, terminal and Android renderers have every kind of session, and the web build has HTTP, iroh (through relays only) and remote wasm
-(`net/wasm_js.rs`, see section 4). The demo server serves its apps over HTTP and iroh, some of them
-also as wasm modules (`/<app>.wasm`), and prints their addresses.
+(`net/wasm_js.rs`, see section 4). The demo apps are wasm modules
+(`crates/wasmapps`), published with the web renderer at
+`https://hypereffect.github.io/hyperb/apps/<app>.wasm`.
 
 ## 1. Addresses
 
@@ -210,18 +211,36 @@ The lines are the hypereffect lines of the other sessions, the `hello`
 first. `receive` runs to completion and may call `send` any number of times.
 Lines reach the module as the renderer wrote them. The module is stateless to
 the renderer: there is no identity, signature or session, and a new instance
-is created for each connection. It has no other imports (no WASI): no clock,
-files or network.
+is created for each connection.
 
-Limits: 256 MiB of memory, and about 5 billion instructions of fuel for each
-`receive`. Going over them, or any trap, closes the session with the error.
-The module cannot tick; it only reacts to lines.
+A module that changes on its own (a timer, a simulation) can also use the
+clock and ask to be called back:
+
+|                                 |                                                                                               |
+| ---                             | ---                                                                                           |
+| import `hyperb.now() -> f64`    | the wall clock, in whole milliseconds since the Unix epoch                                    |
+| import `hyperb.wake_in(ms: i32)` | call `wake` once, in `ms` milliseconds; replaces the pending wake-up, and a negative `ms` only cancels it |
+| export `wake()`                 | called when the wake-up is due; may call `send` and `wake_in`, like `receive`                 |
+
+There is at most one pending wake-up, and nothing repeats on its own: a module
+that wants to be called every second asks again from each `wake`. A module
+that calls `wake_in` must export `wake`. These are optional; a module that
+imports neither function behaves as one that never asks.
+
+The module has no other imports (no WASI): no files or network. Functions it
+imports from other modules (such as the ones wasm-bindgen leaves in modules it
+did not process) trap when called, so modules that never call them still run.
+
+Limits: 256 MiB of memory, and about 20 billion instructions of fuel for each
+call of `receive` or `wake`. Going over them, or any trap, closes the session
+with the error.
 
 The web renderer runs modules on the browser's WebAssembly engine instead
 of wasmtime, with the same imports and exports, except that it accepts only
 the binary format, cannot open local files, and has no fuel or memory
 limits: the module runs on the page's thread, so one that never returns
-freezes the page.
+freezes the page. Its wake-ups are `setTimeout`s, which the browser may delay
+in a background tab.
 
 ## 5. Sessions in the renderer
 

@@ -31,32 +31,37 @@ desktop-install:
 tui *args:
     cargo run -p hyperb-tui -- {{args}}
 
-wasm_apps := "qr textstats billsplit finance chart minecraft dbclient"
+wasm_apps := "billsplit chart dbclient finance grammar minecraft pomodoro qr restaurant saas smarthome textstats therapist"
 
-# Build the stateless demo apps as wasm modules into wasm-apps/
+# Build the demo apps as wasm modules into wasm-apps/
 wasm-apps:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p wasm-apps
     target=$(cargo metadata --no-deps --format-version 1 | jq -r .target_directory)
+    # Harper (grammar) needs random numbers; the module makes its own.
+    export CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='--cfg getrandom_backend="custom"'
     for app in {{wasm_apps}}; do
         cargo build -q --target wasm32-unknown-unknown --release -p hyperb-wasmapps --features "$app"
         cp "$target/wasm32-unknown-unknown/release/wasmapps.wasm" "wasm-apps/$app.wasm"
     done
 
-# Serve the demo apps over HTTP + SSE (default 127.0.0.1:9001), iroh and wasm, and print their hyperb:// addresses
-demoserver addr="127.0.0.1:9001": wasm-apps
-    cargo run -p hyperb-demoserver -- {{addr}}
+# Serve wasm-apps/ over HTTP, with CORS for the web app, and print the demo apps' hyperb:// addresses
+demo-serve port="9001": wasm-apps
+    #!/usr/bin/env python3
+    import functools, http.server, pathlib
+    for app in sorted(pathlib.Path("wasm-apps").glob("*.wasm")):
+        print(f"hyperb://127.0.0.1:{{port}}/{app.name}")
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def end_headers(self):
+            self.send_header("Access-Control-Allow-Origin", "*")
+            super().end_headers()
+    handler = functools.partial(Handler, directory="wasm-apps")
+    http.server.ThreadingHTTPServer(("127.0.0.1", {{port}}), handler).serve_forever()
 
-# Run the demoserver and the desktop app together
-demo:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just wasm-apps
-    cargo build -p hyperb-demoserver -p hyperb-desktop
-    cargo run -q -p hyperb-demoserver &
-    trap 'kill $!' EXIT
-    cargo run -q -p hyperb-desktop
+# Run the desktop app on a demo app, e.g. `just demo pomodoro`
+demo app="restaurant": wasm-apps
+    cargo run -p hyperb-desktop -- "$PWD/wasm-apps/{{app}}.wasm"
 
 # Leptos web app with hot reload on http://127.0.0.1:3000
 [working-directory: 'crates/web']
@@ -78,11 +83,11 @@ clean:
     cargo clean
     rm -rf android/app/build android/app/src/main/jniLibs
 
-# Create the next release tag for a component (android, desktop, tui, demoserver, web); kind is "patch" (<N>-<M+1>) or "major" (<N+1>-1)
+# Create the next release tag for a component (android, desktop, tui, web); kind is "patch" (<N>-<M+1>) or "major" (<N+1>-1)
 tag target kind="patch":
     #!/usr/bin/env bash
     set -euo pipefail
-    case "{{target}}" in android|desktop|tui|demoserver|web) ;; *) echo "unknown target '{{target}}'" >&2; exit 1 ;; esac
+    case "{{target}}" in android|desktop|tui|web) ;; *) echo "unknown target '{{target}}'" >&2; exit 1 ;; esac
     case "{{kind}}" in patch|major) ;; *) echo "kind must be patch or major" >&2; exit 1 ;; esac
     last=$(git tag -l "{{target}}-*-*" | sed -nE 's/^{{target}}-([0-9]+)-([0-9]+)$/\1 \2/p' | sort -k1,1n -k2,2n | tail -n1)
     if [ -z "$last" ]; then

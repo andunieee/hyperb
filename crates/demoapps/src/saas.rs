@@ -4,20 +4,13 @@
 //! An admin sees revenue figures and charts, searches and filters the
 //! customers, opens one to change its plan and seats, suspend or cancel it,
 //! sets the price of each plan, flips feature flags and reads the audit log.
-//! The workspace is remembered by the admin's key, so changes survive
-//! reconnecting, and every change is stamped with the key in the audit log.
+//! The workspace lasts as long as the session.
 
 use super::chart::{PALETTE, Point, draw};
-use super::common::{group, menu, number, param_key, replace, text};
+use super::common::{group, menu, number, replace, text};
 use super::img;
-use super::store;
-use hyperb_core::identity::PublicKey;
 use hypereffect::{Action, App, Element, Handler, Map, Outbox, Value, cel, json, ui};
 use std::collections::BTreeMap;
-use std::sync::LazyLock;
-
-pub(crate) static WORKSPACES: LazyLock<store::Memory<Workspace>> =
-    LazyLock::new(store::Memory::new);
 
 const PAGE: usize = 6;
 const AUDIT_SHOWN: usize = 12;
@@ -44,8 +37,7 @@ struct Flag {
     rollout: u32,
 }
 
-#[derive(Clone)]
-pub(crate) struct Workspace {
+struct Workspace {
     customers: Vec<Customer>,
     /// Dollars per seat per month, by plan.
     prices: [u32; 4],
@@ -144,19 +136,17 @@ impl Workspace {
         self.customers.iter().filter(|c| c.status == status).count()
     }
 
-    fn log(&mut self, who: &PublicKey, what: impl AsRef<str>) {
+    fn log(&mut self, what: impl AsRef<str>) {
         self.seq += 1;
         self.audit
-            .push(format!("#{} {} — {}", self.seq, short(who), what.as_ref()));
+            .push(format!("#{} {ADMIN} — {}", self.seq, what.as_ref()));
         let extra = self.audit.len().saturating_sub(AUDIT_KEPT);
         self.audit.drain(..extra);
     }
 }
 
-fn short(key: &PublicKey) -> String {
-    let hex = key.to_string();
-    format!("{}…", &hex[..8])
-}
+/// Who the audit log says made each change.
+const ADMIN: &str = "admin";
 
 fn dollars(n: i64) -> String {
     format!("${}", group(&n.to_string()))
@@ -164,7 +154,6 @@ fn dollars(n: i64) -> String {
 
 #[derive(Default)]
 pub struct Saas {
-    key: Option<PublicKey>,
     ws: Workspace,
     q: String,
     plan: String,
@@ -185,17 +174,8 @@ impl Saas {
             .collect()
     }
 
-    fn save(&mut self) {
-        if let Some(k) = self.key {
-            WORKSPACES.update(&k, |w| *w = self.ws.clone());
-        }
-    }
-
     fn audit(&mut self, what: impl AsRef<str>) {
-        if let Some(k) = self.key {
-            self.ws.log(&k, what);
-        }
-        self.save();
+        self.ws.log(what);
     }
 
     fn show_customers(&mut self, out: &mut Outbox) {
@@ -354,15 +334,9 @@ impl Saas {
 }
 
 impl App for Saas {
-    fn hello(&mut self, out: &mut Outbox, params: &BTreeMap<String, String>) {
-        self.key = param_key(params);
-        self.ws = self
-            .key
-            .map(|k| WORKSPACES.snapshot(&k))
-            .unwrap_or_default();
+    fn hello(&mut self, out: &mut Outbox, _: &BTreeMap<String, String>) {
         (self.q, self.plan, self.status) = (String::new(), "all".into(), "all".into());
         out.signal(json!({
-            "who": self.key.map_or("unknown".into(), |k| short(&k)),
             "filters": {"q": "", "plan": "all", "status": "all"},
             "menu": {
                 "plans": menu(&[("all", "All plans"), ("free", "Free"), ("starter", "Starter"), ("pro", "Pro"), ("enterprise", "Enterprise")]),
@@ -383,9 +357,7 @@ impl App for Saas {
             ui::text("who_line")
                 .parent("main")
                 .variant("caption")
-                .text(cel(
-                    "'Signed in as admin ' + s.who + ' — every change is recorded under this key.'",
-                )),
+                .text("Every change is recorded in the audit log."),
         );
         out.element(
             ui::notice("feedback")
@@ -789,8 +761,7 @@ impl App for Saas {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testutil::{connect, trigger};
-    use hyperb_core::identity::Identity;
+    use hypereffect::server::Loopback;
 
     fn stat(l: &hypereffect::server::Loopback<Saas>, id: &str) -> String {
         l.client
@@ -803,8 +774,7 @@ mod tests {
 
     #[test]
     fn dashboard_and_customers() {
-        let key = Identity::generate().public();
-        let mut l = connect::<Saas>(key);
+        let mut l = Loopback::<Saas>::new();
         assert!(stat(&l, "kpi_mrr").starts_with("MRR $"));
         assert!(
             l.client
@@ -821,11 +791,11 @@ mod tests {
         // Paging replaces the rows.
         let first = l.client.children(Some("customer_list")).to_vec();
         assert_eq!(first.len(), PAGE);
-        assert!(trigger(&mut l, key, "next", "onPress"));
+        assert!(l.trigger("next", "onPress"));
         assert_ne!(l.client.children(Some("customer_list")), first.as_slice());
         // Filtering narrows the list and goes back to the first page.
         l.write("filters.plan", json!("enterprise"));
-        assert!(trigger(&mut l, key, "plan_filter", "onChange"));
+        assert!(l.trigger("plan_filter", "onChange"));
         let n: usize = stat(&l, "count")
             .split(' ')
             .next()
@@ -835,7 +805,7 @@ mod tests {
         assert!(n > 0 && n < 36);
         assert_eq!(stat(&l, "page").split(' ').nth(1), Some("1"));
         l.write("filters.q", json!("no such customer"));
-        assert!(trigger(&mut l, key, "search", "onChange"));
+        assert!(l.trigger("search", "onChange"));
         assert_eq!(stat(&l, "count"), "0 customers");
         assert!(l.client.children(Some("customer_list")).is_empty());
         let d = l.client.take_diagnostics();
@@ -843,9 +813,8 @@ mod tests {
     }
 
     #[test]
-    fn editing_a_customer_is_audited_and_remembered() {
-        let key = Identity::generate().public();
-        let mut l = connect::<Saas>(key);
+    fn editing_a_customer_is_audited() {
+        let mut l = Loopback::<Saas>::new();
         let mrr_before = stat(&l, "kpi_mrr");
         // Find an active customer on the first page and open it.
         let id = l
@@ -856,11 +825,11 @@ mod tests {
             .map(|r| r.trim_start_matches("c_").parse::<u32>().unwrap())
             .expect("an active customer");
         assert_eq!(l.client.attr("detail", "open"), Some(json!(false)));
-        assert!(trigger(&mut l, key, &format!("c_{id}_open"), "onPress"));
+        assert!(l.trigger(&format!("c_{id}_open"), "onPress"));
         assert_eq!(l.client.attr("detail", "open"), Some(json!(true)));
         l.write("sel.plan", json!("enterprise"));
         l.write("sel.seats", json!(100));
-        assert!(trigger(&mut l, key, "sel_save", "onPress"));
+        assert!(l.trigger("sel_save", "onPress"));
         assert_eq!(l.client.attr("feedback", "text"), Some(json!("Saved.")));
         if l.client.contains(&format!("c_{id}_mrr")) {
             let row = l.client.attr(&format!("c_{id}_mrr"), "text").unwrap();
@@ -877,16 +846,16 @@ mod tests {
         );
         // Suspending drops its revenue; reactivating brings it back.
         let with = stat(&l, "kpi_mrr");
-        assert!(trigger(&mut l, key, "sel_suspend", "onPress"));
+        assert!(l.trigger("sel_suspend", "onPress"));
         assert_eq!(
             l.client.attr("sel_suspend", "label"),
             Some(json!("Reactivate"))
         );
         assert_ne!(stat(&l, "kpi_mrr"), with);
-        assert!(trigger(&mut l, key, "sel_suspend", "onPress"));
+        assert!(l.trigger("sel_suspend", "onPress"));
         assert_eq!(stat(&l, "kpi_mrr"), with);
         // Impersonating is recorded too.
-        assert!(trigger(&mut l, key, "sel_impersonate", "onPress"));
+        assert!(l.trigger("sel_impersonate", "onPress"));
         assert!(
             l.client
                 .attr("audit_0", "text")
@@ -896,45 +865,22 @@ mod tests {
                 .contains("impersonation")
         );
         // Cancelling locks the customer.
-        assert!(trigger(&mut l, key, "sel_cancel", "onPress"));
+        assert!(l.trigger("sel_cancel", "onPress"));
         assert_eq!(l.client.attr("sel_save", "disabled"), Some(json!(true)));
-        assert!(!trigger(&mut l, key, "sel_save", "onPress"));
-        assert!(trigger(&mut l, key, "sel_close", "onPress"));
+        assert!(!l.trigger("sel_save", "onPress"));
+        assert!(l.trigger("sel_close", "onPress"));
         assert_eq!(l.client.attr("detail", "open"), Some(json!(false)));
-        // A new session with the same key finds the changes and the log.
-        drop(l);
-        let l = connect::<Saas>(key);
-        assert!(
-            l.client
-                .attr("audit_0", "text")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .contains("cancelled the subscription")
-        );
-        assert!(
-            l.client
-                .attr("audit_0", "text")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .contains(&short(&key))
-        );
-        // Another admin has a workspace of their own.
-        let other = connect::<Saas>(Identity::generate().public());
-        assert_eq!(other.client.attr("audit_0", "visible"), Some(json!(false)));
     }
 
     #[test]
     fn prices_and_flags() {
-        let key = Identity::generate().public();
-        let mut l = connect::<Saas>(key);
+        let mut l = Loopback::<Saas>::new();
         let before = stat(&l, "kpi_mrr");
         l.write("prices.pro", json!(10));
-        assert!(trigger(&mut l, key, "apply_prices", "onPress"));
+        assert!(l.trigger("apply_prices", "onPress"));
         assert_eq!(l.client.attr("feedback", "variant"), Some(json!("failure")));
         l.write("prices.pro", json!(50));
-        assert!(trigger(&mut l, key, "apply_prices", "onPress"));
+        assert!(l.trigger("apply_prices", "onPress"));
         assert_eq!(l.client.attr("feedback", "variant"), Some(json!("success")));
         assert_ne!(stat(&l, "kpi_mrr"), before);
         // A flag's rollout slider follows its switch.
@@ -945,7 +891,7 @@ mod tests {
             Some(json!(false))
         );
         l.write("flags.sso.rollout", json!(40));
-        assert!(trigger(&mut l, key, "flag_sso_save", "onPress"));
+        assert!(l.trigger("flag_sso_save", "onPress"));
         assert!(
             l.client
                 .attr("audit_0", "text")
@@ -955,7 +901,7 @@ mod tests {
                 .contains("enabled Single sign-on at 40%")
         );
         // Reset puts the data back.
-        assert!(trigger(&mut l, key, "reset", "onPress"));
+        assert!(l.trigger("reset", "onPress"));
         assert_eq!(stat(&l, "kpi_mrr"), before);
         let d = l.client.take_diagnostics();
         assert!(d.is_empty(), "{d:?}");

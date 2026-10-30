@@ -7,10 +7,13 @@
 //! - Only the binary format.
 //! - No fuel or memory limits: the app runs on the page's thread, so one that
 //!   never returns freezes the page.
+//! - Wake-ups (`hyperb.wake_in`) wait on `setTimeout`, so the browser may
+//!   delay them in a background tab.
 
 use crate::address::{self, Kind};
 use crate::net::Event;
-use js_sys::{Function, Object, Reflect, Uint8Array, WebAssembly};
+use futures_util::future::{self, Either};
+use js_sys::{Function, Object, Promise, Reflect, Uint8Array, WebAssembly};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use url::Url;
@@ -56,18 +59,61 @@ pub(super) async fn run(
             }
         })
     };
+    let now = Closure::<dyn Fn() -> f64>::new(|| js_sys::Date::now().floor());
+    // The delay of the wake-up the module last asked for, picked up by the
+    // loop below after each call; negative cancels.
+    let asked: Rc<Cell<Option<i32>>> = Rc::default();
+    let wake_in = {
+        let asked = asked.clone();
+        Closure::<dyn Fn(i32)>::new(move |ms: i32| asked.set(Some(ms)))
+    };
     let hyperb = Object::new();
     Reflect::set(&hyperb, &"send".into(), send.as_ref()).map_err(js_err)?;
+    Reflect::set(&hyperb, &"now".into(), now.as_ref()).map_err(js_err)?;
+    Reflect::set(&hyperb, &"wake_in".into(), wake_in.as_ref()).map_err(js_err)?;
     let imports = Object::new();
     Reflect::set(&imports, &"hyperb".into(), &hyperb).map_err(js_err)?;
 
-    let result = JsFuture::from(WebAssembly::instantiate_buffer(&bytes, &imports))
-        .await
-        .map_err(js_err)?;
-    let instance: WebAssembly::Instance = Reflect::get(&result, &"instance".into())
-        .map_err(js_err)?
-        .dyn_into()
-        .map_err(js_err)?;
+    let module: WebAssembly::Module =
+        JsFuture::from(WebAssembly::compile(&Uint8Array::from(&bytes[..])))
+            .await
+            .map_err(js_err)?
+            .dyn_into()
+            .map_err(js_err)?;
+    // Toolchains such as wasm-bindgen leave imports the app never calls; they
+    // throw if it does.
+    let trap = Closure::<dyn Fn() -> Result<(), JsValue>>::new(|| {
+        Err(js_sys::Error::new("called an import the renderer does not provide").into())
+    });
+    for import in WebAssembly::Module::imports(&module) {
+        let field = |name: &str| {
+            Reflect::get(&import, &name.into())
+                .ok()
+                .and_then(|v| v.as_string())
+        };
+        let (Some(from), Some(name)) = (field("module"), field("name")) else {
+            continue;
+        };
+        if from == "hyperb" || field("kind").as_deref() != Some("function") {
+            continue;
+        }
+        let functions = match Reflect::get(&imports, &from.as_str().into()) {
+            Ok(o) if o.is_object() => o,
+            _ => {
+                let o = Object::new().into();
+                Reflect::set(&imports, &from.as_str().into(), &o).map_err(js_err)?;
+                o
+            }
+        };
+        Reflect::set(&functions, &name.into(), trap.as_ref()).map_err(js_err)?;
+    }
+
+    let instance: WebAssembly::Instance =
+        JsFuture::from(WebAssembly::instantiate_module(&module, &imports))
+            .await
+            .map_err(js_err)?
+            .dyn_into()
+            .map_err(js_err)?;
     let exports = instance.exports();
     let export = |name: &str| Reflect::get(&exports, &name.into()).ok();
     let mem: WebAssembly::Memory = export("memory")
@@ -81,8 +127,32 @@ pub(super) async fn run(
     let (alloc, receive) = (func("alloc")?, func("receive")?);
     *memory.borrow_mut() = Some(mem.clone());
 
+    let mut timer: Option<JsFuture> = None;
     // Ends when the connection (the sender of `out`) is dropped.
-    while let Ok(line) = out.recv().await {
+    loop {
+        if let Some(ms) = asked.take() {
+            timer = (ms >= 0).then(|| sleep(ms));
+        }
+        let line = match timer.take() {
+            Some(t) => match future::select(Box::pin(out.recv()), t).await {
+                Either::Left((line, t)) => {
+                    timer = Some(t);
+                    line
+                }
+                Either::Right(_) => {
+                    func("wake")
+                        .map_err(|_| "wasm: wake_in was called, but the module exports no function 'wake'")?
+                        .call0(&JsValue::UNDEFINED)
+                        .map_err(js_err)?;
+                    if let Some(e) = failed.take() {
+                        return Err(format!("wasm: {e}"));
+                    }
+                    continue;
+                }
+            },
+            None => out.recv().await,
+        };
+        let Ok(line) = line else { break };
         let len = i32::try_from(line.len()).map_err(|_| "line too long")?;
         let ptr = alloc
             .call1(&JsValue::UNDEFINED, &len.into())
@@ -103,8 +173,21 @@ pub(super) async fn run(
             return Err(format!("wasm: {e}"));
         }
     }
-    drop(send);
+    drop((send, now, wake_in, trap));
     Ok(())
+}
+
+/// Resolves after `ms` milliseconds.
+fn sleep(ms: i32) -> JsFuture {
+    let promise = Promise::new(&mut |resolve, _| {
+        let set_timeout = Reflect::get(&js_sys::global(), &"setTimeout".into())
+            .ok()
+            .and_then(|f| f.dyn_into::<Function>().ok());
+        if let Some(set_timeout) = set_timeout {
+            let _ = set_timeout.call2(&JsValue::UNDEFINED, &resolve, &ms.into());
+        }
+    });
+    JsFuture::from(promise)
 }
 
 fn read(mem: &WebAssembly::Memory, ptr: u32, len: u32) -> Option<Vec<u8>> {

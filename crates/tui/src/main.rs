@@ -44,7 +44,7 @@ const IDLE: Duration = Duration::from_secs(60);
 
 const USAGE: &str = "usage: hyperb-tui <address>\n       hyperb-tui --key\n\n\
     Runs the hypereffect app at <address>, e.g. hyperb://example.com/app,\n\
-    localhost:9001/restaurant or ~/apps/qr.wasm.\n\
+    hypereffect.github.io/hyperb/apps/qr.wasm or ~/apps/qr.wasm.\n\
     --key prints this app's public key and exits.";
 
 fn main() -> ExitCode {

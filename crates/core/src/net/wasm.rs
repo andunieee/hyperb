@@ -9,10 +9,20 @@
 //! - `hyperb.send(ptr: i32, len: i32)`, imported by the module: a line (or
 //!   lines) from the app, at `ptr` in its memory.
 //!
-//! The module has no other imports: no clock, files or network. It keeps no
+//! Optionally, for apps that change on their own:
+//!
+//! - `hyperb.now() -> f64`, imported: the wall clock, in whole milliseconds
+//!   since the Unix epoch.
+//! - `hyperb.wake_in(ms: i32)`, imported: calls the module's exported
+//!   `wake()` once, in `ms` milliseconds. It replaces the wake-up already
+//!   pending, if any; a negative `ms` only cancels it.
+//!
+//! The module has no other imports: no files or network. Functions it
+//! imports from other modules trap when called. It keeps no
 //! identity or session, so lines reach it exactly as the renderer wrote them.
 
 use crate::net::Event;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use url::Url;
 use wasmtime::{
     Caller, Config, Engine, Extern, Linker, Module, Store, StoreLimits, StoreLimitsBuilder,
@@ -21,11 +31,13 @@ use wasmtime::{
 /// Largest linear memory a module may grow to.
 const MAX_MEMORY: usize = 256 << 20;
 /// Instructions (roughly) one call into the module may run.
-const FUEL: u64 = 5_000_000_000;
+const FUEL: u64 = 20_000_000_000;
 
 struct Host {
     events: async_channel::Sender<Event>,
     limits: StoreLimits,
+    /// When to call `wake`, as the module last asked with `wake_in`.
+    wake: Option<Instant>,
 }
 
 /// Runs the app at `url`, or `module` if given.
@@ -58,7 +70,7 @@ fn exec(
     out: async_channel::Receiver<String>,
     events: async_channel::Sender<Event>,
 ) -> Result<(), String> {
-    let err = |e: wasmtime::Error| format!("wasm: {e}");
+    let err = |e: wasmtime::Error| format!("wasm: {e:#}");
     let mut config = Config::new();
     config.consume_fuel(true);
     let engine = Engine::new(&config).map_err(err)?;
@@ -91,9 +103,35 @@ fn exec(
             },
         )
         .map_err(err)?;
+    linker
+        .func_wrap("hyperb", "now", |_: Caller<'_, Host>| -> f64 { now_ms() })
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "hyperb",
+            "wake_in",
+            |mut caller: Caller<'_, Host>, ms: i32| {
+                caller.data_mut().wake = u64::try_from(ms)
+                    .ok()
+                    .map(|ms| Instant::now() + Duration::from_millis(ms));
+            },
+        )
+        .map_err(err)?;
+
+    // Toolchains such as wasm-bindgen leave imports the app never calls.
+    linker
+        .define_unknown_imports_as_traps(&module)
+        .map_err(err)?;
 
     let limits = StoreLimitsBuilder::new().memory_size(MAX_MEMORY).build();
-    let mut store = Store::new(&engine, Host { events, limits });
+    let mut store = Store::new(
+        &engine,
+        Host {
+            events,
+            limits,
+            wake: None,
+        },
+    );
     store.limiter(|h| &mut h.limits);
     store.set_fuel(FUEL).map_err(err)?;
     let instance = linker.instantiate(&mut store, &module).map_err(err)?;
@@ -106,10 +144,34 @@ fn exec(
     let receive = instance
         .get_typed_func::<(i32, i32), ()>(&mut store, "receive")
         .map_err(err)?;
+    let wake = instance.get_typed_func::<(), ()>(&mut store, "wake").ok();
+    // This runs on a blocking thread of the network runtime, which can still
+    // wait for a line until the wake-up is due.
+    let rt = tokio::runtime::Handle::current();
 
     // Ends when the connection (the sender of `out`) is dropped.
-    while let Ok(line) = out.recv_blocking() {
+    loop {
+        let next = match store.data().wake {
+            Some(at) => rt.block_on(async {
+                tokio::time::timeout_at(at.into(), out.recv())
+                    .await
+                    .map(Result::ok)
+            }),
+            None => Ok(out.recv_blocking().ok()),
+        };
         store.set_fuel(FUEL).map_err(err)?;
+        let line = match next {
+            Ok(Some(line)) => line,
+            Ok(None) => break,
+            Err(_) => {
+                store.data_mut().wake = None;
+                let wake = wake
+                    .as_ref()
+                    .ok_or("wasm: wake_in was called, but the module exports no function 'wake'")?;
+                wake.call(&mut store, ()).map_err(err)?;
+                continue;
+            }
+        };
         let len = i32::try_from(line.len()).map_err(|_| "line too long")?;
         let ptr = alloc.call(&mut store, len).map_err(err)?;
         memory
@@ -118,6 +180,13 @@ fn exec(
         receive.call(&mut store, (ptr, len)).map_err(err)?;
     }
     Ok(())
+}
+
+fn now_ms() -> f64 {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    since.as_millis() as f64
 }
 
 #[cfg(test)]
@@ -159,6 +228,38 @@ mod tests {
         assert_eq!(
             events.recv_blocking().unwrap(),
             Event::Data("action {}\n".into())
+        );
+    }
+
+    /// An app that asks to be woken on every line, and says "woke" when it is.
+    const ALARM: &str = r#"(module
+        (import "hyperb" "send" (func $send (param i32 i32)))
+        (import "hyperb" "now" (func $now (result f64)))
+        (import "hyperb" "wake_in" (func $wake_in (param i32)))
+        (memory (export "memory") 1)
+        (data (i32.const 0) "woke\n")
+        (func (export "alloc") (param $n i32) (result i32) (i32.const 1024))
+        (func (export "receive") (param $p i32) (param $n i32)
+            (if (f64.lt (call $now) (f64.const 1e12)) (then unreachable))
+            (call $wake_in (i32.const 10)))
+        (func (export "wake")
+            (call $send (i32.const 0) (i32.const 5))))"#;
+
+    #[test]
+    fn wake_up() {
+        let conn = open("alarm", ALARM);
+        let events = conn.events();
+        assert_eq!(events.recv_blocking().unwrap(), Event::Open);
+        conn.send("hello {}\n".into());
+        assert_eq!(
+            events.recv_blocking().unwrap(),
+            Event::Data("woke\n".into())
+        );
+        // Once: the app did not ask again.
+        conn.send("action {}\n".into());
+        assert_eq!(
+            events.recv_blocking().unwrap(),
+            Event::Data("woke\n".into())
         );
     }
 

@@ -1,4 +1,4 @@
-name: Deploy web renderer to GitHub Pages
+name: Deploy web renderer and demo apps to GitHub Pages
 
 on:
   push:
@@ -36,6 +36,10 @@ jobs:
           workspaces: crates/web
           cache-all-crates: "true"
 
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
       - name: Install cargo-leptos
         run: cargo install cargo-leptos --locked
 
@@ -64,6 +68,14 @@ jobs:
           # "/"; on Pages it lives under BASE_PATH.
           sed -i "s#^(\"\", \"pkg\", \"hyperb-web\", \"hyperb-web\");#(\"${BASE_PATH}\", \"pkg\", \"hyperb-web\", \"hyperb-web\");#" target/site/index.html target/site/404.html
           rm -f target/site/pkg/*.d.ts target/site/icon.png
+
+      # The demo apps, as wasm modules the renderers download from
+      # ${BASE_PATH}/apps/<app>.wasm.
+      - name: Build the demo apps
+        run: |
+          just wasm-apps
+          mkdir -p target/site/apps
+          cp wasm-apps/*.wasm target/site/apps/
 
       - name: List site contents
         run: find target/site -type f

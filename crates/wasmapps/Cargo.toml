@@ -12,15 +12,26 @@ name = "wasmapps"
 crate-type = ["cdylib"]
 
 [dependencies]
-hyperb-demoapps = { path = "../demoapps" }
+hyperb-demoapps = { path = "../demoapps", default-features = false }
 hypereffect.workspace = true
+getrandom = { version = "0.3", optional = true }
 
 [features]
 default = []
-qr = []
-textstats = []
 billsplit = []
-finance = []
 chart = []
-minecraft = []
 dbclient = []
+finance = []
+# Harper needs random numbers: build with `--cfg getrandom_backend="custom"`.
+grammar = ["hyperb-demoapps/grammar", "dep:getrandom"]
+minecraft = []
+pomodoro = []
+qr = []
+restaurant = []
+saas = []
+smarthome = []
+textstats = []
+therapist = []
+
+[dev-dependencies]
+hyperb-core = { workspace = true, features = ["wasm"] }

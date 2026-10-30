@@ -22,7 +22,7 @@ futures-util = { workspace = true, optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["stream"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread"], optional = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "time"], optional = true }
 wasmtime = { version = "48", default-features = false, features = ["runtime", "cranelift", "std", "wat"], optional = true }
 
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]

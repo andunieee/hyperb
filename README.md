@@ -8,6 +8,23 @@ A browser for [hypereffect](https://crates.io/crates/hypereffect) apps. It opens
 
 It comes as a GTK4 desktop app, a terminal app, an Android app and a [web app](https://hypereffect.github.io/hyperb/).
 
+# Demo apps
+The demo apps are wasm modules (`crates/demoapps`, built by `crates/wasmapps`), hosted at `hyperb://hypereffect.github.io/hyperb/apps/<app>.wasm`. Open one of these addresses in any hyperb app, or follow a link to open it in the web app:
+
+* [`restaurant`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/restaurant.wasm): reserve a table
+* [`therapist`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/therapist.wasm): book a weekly session
+* [`textstats`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/textstats.wasm): statistics of a text
+* [`pomodoro`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/pomodoro.wasm): a focus timer
+* [`qr`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/qr.wasm): QR codes
+* [`chart`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/chart.wasm): charts
+* [`billsplit`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/billsplit.wasm): split a bill
+* [`finance`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/finance.wasm): an RPN financial calculator
+* [`grammar`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/grammar.wasm): a grammar checker, on Harper
+* [`dbclient`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/dbclient.wasm): a SQL client over fake tables
+* [`minecraft`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/minecraft.wasm): a fake Minecraft server's admin console
+* [`saas`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/saas.wasm): a fake product's admin panel
+* [`smarthome`](https://hypereffect.github.io/hyperb/?link=hyperb://hypereffect.github.io/hyperb/apps/smarthome.wasm): a simulated house
+
 # Installation
 Grab the files from the [latest release](https://github.com/hypereffect/hyperb/releases/latest), or use the commands below, which all download the latest one.
 
@@ -56,9 +73,8 @@ Each component is released separately by pushing a tag named `<component>-<N>-<M
 * `desktop-*`: a `.zip` and a `-setup-` installer for Windows
 * `android-*`: the APK
 * `tui-*`: the terminal app for Linux, macOS and Windows
-* `demoserver-*`: the demo server and its wasm apps for Linux, macOS and Windows
 
-The web renderer follows the same tag scheme, but `web-*` tags deploy it to GitHub Pages instead of publishing a release.
+The web renderer follows the same tag scheme, but `web-*` tags deploy it to GitHub Pages, together with the [demo apps](#demo-apps), instead of publishing a release.
 
 ## Building from source
 ### Dependencies
@@ -73,6 +89,7 @@ The web renderer follows the same tag scheme, but `web-*` tags deploy it to GitH
 ```
 just desktop        # the GTK4 app
 just tui            # the terminal app
-just demo           # the demo server and the desktop app together
+just demo pomodoro  # the desktop app on a demo app
+just demo-serve     # the demo apps over HTTP on 127.0.0.1:9001, for the web app
 just web            # the web app with hot reload on http://127.0.0.1:3000
 ```

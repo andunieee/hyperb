@@ -4,8 +4,7 @@ version.workspace = true
 edition.workspace = true
 publish = false
 
-# The demo apps that keep no state between sessions, or only pretend to: the
-# demoserver serves them, and `hyperb-wasmapps` builds them as wasm modules.
+# The demo apps, which `hyperb-wasmapps` builds as wasm modules.
 
 [lib]
 name = "demoapps"
@@ -15,3 +14,12 @@ hypereffect.workspace = true
 png = "0.18"
 base64 = "0.22"
 qrcode = { version = "0.14", default-features = false }
+harper-core = { version = "2.13.0", optional = true }
+
+[features]
+default = ["grammar"]
+# The grammar checker, on Harper, which is large to build.
+grammar = ["dep:harper-core"]
+
+[dev-dependencies]
+hypereffect = { workspace = true, features = ["client"] }
