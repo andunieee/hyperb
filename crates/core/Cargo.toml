@@ -2,6 +2,14 @@
 name = "hyperb-core"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Shared logic for the hyperb renderers: addresses, identity, transports, history and wasm apps"
+repository = "https://github.com/hypereffect/hyperb"
+homepage = "https://hypereffect.github.io/hyperb/"
+documentation = "https://docs.rs/hyperb-core"
+readme = "../../README.md"
+keywords = ["browser", "hypereffect", "wasm", "iroh"]
+categories = ["gui", "web-programming"]
 
 [lib]
 name = "hyperb_core"

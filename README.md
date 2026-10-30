@@ -73,6 +73,7 @@ Each component is released separately by pushing a tag named `<component>-<N>-<M
 * `desktop-*`: a `.zip` and a `-setup-` installer for Windows
 * `android-*`: the APK
 * `tui-*`: the terminal app for Linux, macOS and Windows
+* `core-*`: publishes `hyperb-core` to [crates.io](https://crates.io/crates/hyperb-core); `core-<N>-<M>` becomes crate version `0.<N>.<M>`
 
 The web renderer follows the same tag scheme, but `web-*` tags deploy it to GitHub Pages, together with the [demo apps](#demo-apps), instead of publishing a release.
 
