@@ -211,6 +211,33 @@ pub fn hyperb(url: &Url) -> String {
     }
 }
 
+/// Where a URL an app asked to open (a button handler's `open`) goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Open {
+    /// A web page or an email address, for the system's browser or mail
+    /// client.
+    External(Url),
+    /// A hyperb address, which the renderer opens itself as a new session
+    /// (a new tab or window where it has them).
+    App(Url),
+}
+
+/// Decides where a URL an app asked to open goes, if anywhere. `http`,
+/// `https` and `mailto` go to the system; the `hyperb` schemes
+/// (`hyperb`, `hyperb+http`, `hyperb+https`, `web+hyperb`) are addresses
+/// opened like links from elsewhere, so not local files ([`from_link`]).
+/// Every other scheme is refused, since it could launch an application or
+/// run code (`javascript:`, `file:`, custom schemes).
+pub fn open(input: &str) -> Result<Open, String> {
+    let url = Url::parse(input).map_err(|e| e.to_string())?;
+    match url.scheme() {
+        "http" | "https" if url.host().is_some() => Ok(Open::External(url)),
+        "mailto" => Ok(Open::External(url)),
+        "hyperb" | "hyperb+http" | "hyperb+https" | "web+hyperb" => from_link(input).map(Open::App),
+        other => Err(format!("unsupported scheme '{other}'")),
+    }
+}
+
 /// The file of a `wasm` URL, percent-decoded.
 pub fn wasm_path(url: &Url) -> Option<std::path::PathBuf> {
     if url.scheme() != "wasm" {
@@ -326,6 +353,41 @@ mod tests {
 
     fn n(s: &str) -> String {
         normalize(s).unwrap().to_string()
+    }
+
+    #[test]
+    fn opens() {
+        let ext = |s: &str| match open(s) {
+            Ok(Open::External(u)) => u.to_string(),
+            r => panic!("{s}: {r:?}"),
+        };
+        let app = |s: &str| match open(s) {
+            Ok(Open::App(u)) => u.to_string(),
+            r => panic!("{s}: {r:?}"),
+        };
+        assert_eq!(
+            ext("https://example.com/a?b#c"),
+            "https://example.com/a?b#c"
+        );
+        assert_eq!(ext("HTTP://Example.com"), "http://example.com/");
+        assert_eq!(ext("mailto:ada@example.com"), "mailto:ada@example.com");
+        assert_eq!(
+            app("hyperb://example.com/a#x=1"),
+            "https://example.com/a#x=1"
+        );
+        assert_eq!(app("web+hyperb://localhost:9001"), "http://localhost:9001/");
+        assert_eq!(app("hyperb+http://example.com"), "http://example.com/");
+        assert_eq!(
+            app(&format!("hyperb://{ID}/app")),
+            format!("iroh://{}/app", ID.to_lowercase())
+        );
+        assert!(open("hyperb:///opt/a.wasm").is_err());
+        assert!(open("javascript:alert(1)").is_err());
+        assert!(open("file:///etc/passwd").is_err());
+        assert!(open("iroh://example.com").is_err());
+        assert!(open("wasm:///opt/a.wasm").is_err());
+        assert!(open("example.com").is_err());
+        assert!(open("").is_err());
     }
 
     #[test]

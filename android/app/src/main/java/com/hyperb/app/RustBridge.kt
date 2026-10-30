@@ -23,8 +23,12 @@ object RustBridge {
     @JvmStatic external fun await(handle: Long): Boolean
     @JvmStatic external fun snapshot(handle: Long): String
 
-    /** Input on element [id]: [value] (JSON) goes to its bound signal, then [event] runs. */
-    @JvmStatic external fun input(handle: Long, id: String, value: String?, event: String?)
+    /**
+     * Input on element [id]: [value] (JSON) goes to its bound signal, then [event] runs. Returns
+     * the URLs a button asked to open (`http`, `https`, `mailto` and hyperb addresses), as a JSON
+     * array of `{"url", "app"}`, where `app` marks a hyperb address.
+     */
+    @JvmStatic external fun input(handle: Long, id: String, value: String?, event: String?): String
 
     /** The history and favorites, as JSON; see [Library]. */
     @JvmStatic external fun library(): String

@@ -16,7 +16,7 @@ use crate::debug::{Debugger, Dir};
 use crate::library::{self, Library};
 use crate::render::Renderer;
 use gtk::prelude::*;
-use gtk::{gdk, glib, pango};
+use gtk::{gdk, gio, glib, pango};
 use gtk4 as gtk;
 use hyperb_core::address;
 use hyperb_core::hypereffect::client::Client;
@@ -53,7 +53,12 @@ pub struct Tab {
     library: Rc<Library>,
     /// Called after the tab starts connecting to a new address.
     navigated: RefCell<Option<Box<dyn Fn()>>>,
+    /// Called with the hyperb addresses that buttons ask to open.
+    open_app: RefCell<Box<OpenApp>>,
 }
+
+/// What a tab calls with a hyperb address a button asks to open.
+type OpenApp = dyn Fn(&str);
 
 struct Session {
     client: Client,
@@ -273,6 +278,7 @@ impl Tab {
                 identity,
                 library,
                 navigated: RefCell::new(None),
+                open_app: RefCell::new(Box::new(|_| {})),
             }
         })
     }
@@ -280,6 +286,11 @@ impl Tab {
     /// Calls `f` each time the tab opens an address.
     pub fn on_navigate(&self, f: impl Fn() + 'static) {
         *self.navigated.borrow_mut() = Some(Box::new(f));
+    }
+
+    /// Calls `f` with each hyperb address a button asks to open.
+    pub fn on_open_app(&self, f: impl Fn(&str) + 'static) {
+        *self.open_app.borrow_mut() = Box::new(f);
     }
 
     /// The `hyperb://` address the tab shows, if it has opened one.
@@ -471,7 +482,7 @@ impl Tab {
     /// User input on element `id`: writes `value` to its bound signal, if
     /// any, then runs the handler in attribute `event`, if any.
     pub fn input(&self, id: &str, value: Option<Value>, event: Option<&str>) {
-        let line = {
+        let (line, opens) = {
             let mut s = self.session.borrow_mut();
             if let Some(v) = value {
                 let bind = s.client.attr(id, "bind");
@@ -479,8 +490,12 @@ impl Tab {
                     s.client.write(path, v);
                 }
             }
-            event.and_then(|e| s.client.trigger(id, e))
+            let line = event.and_then(|e| s.client.trigger(id, e));
+            (line, s.client.take_opens())
         };
+        for url in opens {
+            self.open(&url);
+        }
         if let Some(line) = line {
             if let Some(c) = &self.session.borrow().conn {
                 self.debug.log(Dir::Sent, &line);
@@ -488,6 +503,33 @@ impl Tab {
             }
         }
         self.render();
+    }
+
+    /// Opens a URL a button asked for (`address::open`): a hyperb address
+    /// through `on_open_app`, a web page or an email address in the system's
+    /// browser or mail client.
+    fn open(&self, url: &str) {
+        let url = match address::open(url) {
+            Ok(address::Open::External(u)) => u,
+            Ok(address::Open::App(u)) => {
+                (self.open_app.borrow())(&address::hyperb(&u));
+                return;
+            }
+            Err(e) => {
+                eprintln!("not opening {url}: {e}");
+                return;
+            }
+        };
+        let window = self.page.root().and_downcast::<gtk::Window>();
+        gtk::UriLauncher::new(url.as_str()).launch(
+            window.as_ref(),
+            gio::Cancellable::NONE,
+            move |r| {
+                if let Err(e) = r {
+                    eprintln!("could not open {url}: {e}");
+                }
+            },
+        );
     }
 
     pub fn select_tab(&self, tabs: &str, tab: &str) {

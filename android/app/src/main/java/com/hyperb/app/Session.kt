@@ -17,8 +17,11 @@ class Session(address: String, link: Boolean, reload: Boolean) {
         if (handle == 0L) null else Snapshot.parse(RustBridge.snapshot(handle))
     }
 
-    fun input(id: String, value: String?, event: String?) = synchronized(lock) {
-        if (handle != 0L) RustBridge.input(handle, id, value, event)
+    /** Returns the URLs a button asked to open. */
+    fun input(id: String, value: String?, event: String?): List<Open> = synchronized(lock) {
+        if (handle == 0L) return emptyList()
+        val a = JSONArray(RustBridge.input(handle, id, value, event))
+        List(a.length()) { a.getJSONObject(it).let { o -> Open(o.getString("url"), o.getBoolean("app")) } }
     }
 
     fun cancel() = synchronized(lock) {
@@ -37,6 +40,9 @@ class Session(address: String, link: Boolean, reload: Boolean) {
         }
     }
 }
+
+/** A URL a button asked to open: a hyperb address if [app], else a web page or an email address. */
+class Open(val url: String, val app: Boolean)
 
 class Snapshot(
     val url: String,

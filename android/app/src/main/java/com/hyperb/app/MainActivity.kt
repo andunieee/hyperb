@@ -3,10 +3,12 @@ package com.hyperb.app
 import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -146,6 +148,7 @@ open class MainActivity : ComponentActivity() {
             null
         }
         browser.loadLibrary()
+        browser.openUrl = ::openUrl
         // A window that the system recreates goes back to its address; a new one opens its
         // link, if it has one.
         val restored = savedInstanceState?.getString(ADDRESS)
@@ -163,6 +166,23 @@ open class MainActivity : ComponentActivity() {
                 setTaskDescription(ActivityManager.TaskDescription(title, bitmap))
             }
             HyperbTheme { BrowserScreen(browser, ::scan) }
+        }
+    }
+
+    /**
+     * Opens a URL a button asked for: a hyperb address in a window of its own, like a link from
+     * another app, and anything else in the app that handles it (a web browser, a mail app).
+     */
+    private fun openUrl(open: Open) {
+        val uri = Uri.parse(open.url)
+        if (open.app) {
+            startActivity(Intent(Intent.ACTION_VIEW, uri, this, LinkActivity::class.java))
+            return
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No app can open ${open.url}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -205,6 +225,8 @@ class Browser : Host {
         private set
     var session: Session? = null
         private set
+    /** Opens a URL a button asked for, outside the app. */
+    var openUrl: (Open) -> Unit = {}
     private val main = Handler(Looper.getMainLooper())
 
     override val connected get() = snapshot?.connected == true
@@ -261,8 +283,9 @@ class Browser : Host {
 
     override fun input(id: String, value: String?, event: String?) {
         val s = session ?: return
-        s.input(id, value, event)
+        val opens = s.input(id, value, event)
         s.snapshot()?.let { snapshot = it }
+        opens.forEach(openUrl)
     }
 }
 

@@ -7,6 +7,10 @@
 //! offers to reconnect.
 //!
 //! The window is titled with the name the app gives itself in its metadata.
+//!
+//! URLs that buttons ask to open go to the system's opener when there is a
+//! graphical session, and the status line shows them for a while either way.
+//! A hyperb address replaces the session, as there is only one.
 
 use crate::page::{Action, Page, ACCENT, SPINNER};
 use crate::Msg;
@@ -19,8 +23,9 @@ use ratatui::crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKin
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
 use std::io::Write;
+use std::process::{Command, Stdio};
 use std::sync::mpsc::Sender;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use url::Url;
 
 pub struct Browser {
@@ -33,7 +38,12 @@ pub struct Browser {
     epoch: Instant,
     rects: Rects,
     identity: Identity,
+    /// What the status line says instead of its hints, until when.
+    notice: Option<(String, Instant)>,
 }
+
+/// How long a notice stays in the status line.
+const NOTICE: Duration = Duration::from_secs(6);
 
 struct Session {
     client: Client,
@@ -77,6 +87,7 @@ impl Browser {
             epoch: Instant::now(),
             rects: Rects::default(),
             identity,
+            notice: None,
         };
         b.reload();
         b
@@ -87,10 +98,19 @@ impl Browser {
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
-        self.page.next_deadline()
+        let notice = self.notice.as_ref().map(|(_, until)| *until);
+        self.page.next_deadline().into_iter().chain(notice).min()
+    }
+
+    /// What the status line shows instead of its hints, if anything.
+    pub fn notice(&self) -> Option<&str> {
+        self.notice.as_ref().map(|(n, _)| n.as_str())
     }
 
     pub fn tick(&mut self, now: Instant) {
+        if self.notice.as_ref().is_some_and(|(_, until)| *until <= now) {
+            self.notice = None;
+        }
         let acts = self.page.due(now);
         self.apply(acts);
     }
@@ -194,11 +214,42 @@ impl Browser {
                 s.client.write(path, v);
             }
         }
-        if let Some(line) = event.and_then(|e| s.client.trigger(id, e)) {
-            if let Some(c) = &s.conn {
+        let line = event.and_then(|e| s.client.trigger(id, e));
+        let mut app = None;
+        for url in s.client.take_opens() {
+            app = self.open(&url).or(app);
+        }
+        // The action still goes to the app that asked to open the address.
+        if let Some(line) = line {
+            if let Some(c) = &self.session.conn {
                 c.send(line);
             }
         }
+        if let Some(url) = app {
+            self.title = address::label(&url);
+            self.connect(url);
+        }
+    }
+
+    /// Opens a URL a button asked for (`address::open`) and says so in the
+    /// status line: a web page or an email address with the system's opener
+    /// (without a graphical session the status line only shows it), while a
+    /// hyperb address is returned for the session to connect to.
+    fn open(&mut self, url: &str) -> Option<Url> {
+        let (notice, app) = match address::open(url) {
+            Err(e) => {
+                log(
+                    self.session.url.as_str(),
+                    &[format!("not opening {url}: {e}")],
+                );
+                (format!("Not opened ({e}): {url}"), None)
+            }
+            Ok(address::Open::External(u)) if launch(u.as_str()) => (format!("Opened {u}"), None),
+            Ok(address::Open::External(u)) => (format!("Open {u}"), None),
+            Ok(address::Open::App(u)) => (format!("Opened {}", address::hyperb(&u)), Some(u)),
+        };
+        self.notice = Some((notice, Instant::now() + NOTICE));
+        app
     }
 
     // --- input ---------------------------------------------------------------
@@ -298,6 +349,39 @@ impl Browser {
 
         self.rects.content = rest;
         self.page.draw(rest, buf, &self.tree, &self.session.client)
+    }
+}
+
+/// Hands `url` to the system's opener, if there is a graphical session to
+/// open it in. Returns whether it was handed over.
+fn launch(url: &str) -> bool {
+    let mut cmd = if cfg!(windows) {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "start", ""]);
+        c
+    } else if cfg!(target_os = "macos") {
+        Command::new("open")
+    } else {
+        let graphical = ["DISPLAY", "WAYLAND_DISPLAY"]
+            .iter()
+            .any(|v| std::env::var_os(v).is_some_and(|v| !v.is_empty()));
+        if !graphical {
+            return false;
+        }
+        Command::new("xdg-open")
+    };
+    let child = cmd
+        .arg(url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            std::thread::spawn(move || child.wait());
+            true
+        }
+        Err(_) => false,
     }
 }
 

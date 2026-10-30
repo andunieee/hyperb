@@ -269,9 +269,14 @@ impl Ctx {
                     c.write(&path, v);
                 }
             }
-            event.and_then(|e| c.trigger(id, e))
+            let line = event.and_then(|e| c.trigger(id, e));
+            (line, c.take_opens())
         });
-        if let Some(line) = line.flatten() {
+        let (line, opens) = line.unwrap_or_default();
+        for url in opens {
+            open(&url);
+        }
+        if let Some(line) = line {
             self.send(line);
         }
         self.refresh();
@@ -300,6 +305,32 @@ impl Ctx {
 
     pub fn public_key(self) -> String {
         self.identity.with_value(|id| id.public().to_string())
+    }
+}
+
+/// Opens a URL a button asked for (`address::open`) in a new browser tab with
+/// no reference back to this page: a web page or an email address as it is,
+/// a hyperb address in this page as `?link=<address>`.
+fn open(url: &str) {
+    let url = match address::open(url) {
+        Ok(address::Open::External(u)) => u.to_string(),
+        Ok(address::Open::App(u)) => {
+            let Ok(params) = web_sys::UrlSearchParams::new_with_str("") else {
+                return;
+            };
+            params.append("link", &address::hyperb(&u));
+            let path = window().location().pathname().unwrap_or_default();
+            format!("{path}?{}", String::from(params.to_string()))
+        }
+        Err(e) => {
+            warn!("not opening {url}: {e}");
+            return;
+        }
+    };
+    let opened =
+        window().open_with_url_and_target_and_features(&url, "_blank", "noopener,noreferrer");
+    if opened.is_err() {
+        warn!("could not open {url}");
     }
 }
 

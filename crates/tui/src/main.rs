@@ -203,12 +203,16 @@ impl App {
         }
         let status = Rect::new(area.x, area.bottom() - 1, area.width, 1);
         let hints = "Tab/↑↓ move · Enter/Space activate · Esc back · F5 reconnect · Ctrl+Q quit";
+        let (text, style) = match self.browser.notice() {
+            Some(n) => (n, Style::new().fg(Color::Gray)),
+            None => (hints, Style::new().fg(Color::DarkGray)),
+        };
         f.buffer_mut().set_stringn(
             status.x + 1,
             status.y,
-            hints,
+            text,
             status.width.saturating_sub(2) as usize,
-            Style::new().fg(Color::DarkGray),
+            style,
         );
     }
 }

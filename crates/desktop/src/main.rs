@@ -341,6 +341,14 @@ impl Browser {
                 }
             });
         }
+        {
+            let b = Rc::downgrade(self);
+            t.on_open_app(move |u| {
+                if let Some(b) = b.upgrade() {
+                    b.add_tab(Some(u), true);
+                }
+            });
+        }
         self.tabs.borrow_mut().push(t.clone());
         self.notebook.set_current_page(Some(i));
         match url {

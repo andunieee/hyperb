@@ -4,7 +4,8 @@
 //! A session is a [`Connection`] and its [`Client`], handed to Kotlin as an
 //! opaque handle. Kotlin waits for network events on a background thread
 //! with `await`, then reads the whole state as JSON with `snapshot` and
-//! renders it; user input goes back through `input`.
+//! renders it; user input goes back through `input`, which returns the URLs
+//! buttons asked to open, for Kotlin to hand to the system.
 //!
 //! Handle lifetime: `cancel` ends the session, which makes `await` return
 //! false; the thread that calls `await` then calls `free`, and nothing may
@@ -139,8 +140,11 @@ impl Inner {
     }
 
     /// User input on element `id`: writes `value` to its bound signal, if
-    /// any, then runs the handler in attribute `event`, if any.
-    fn input(&mut self, id: &str, value: Option<Value>, event: Option<&str>) {
+    /// any, then runs the handler in attribute `event`, if any. Returns the
+    /// URLs buttons asked to open, those `address::open` allows, as
+    /// `{"url", "app"}`: `app` for a hyperb address (in its `hyperb://`
+    /// form), which the app opens itself.
+    fn input(&mut self, id: &str, value: Option<Value>, event: Option<&str>) -> Vec<Value> {
         if let Some(v) = value {
             if let Some(Value::String(path)) = self.client.attr(id, "bind") {
                 self.client.write(&path, v);
@@ -151,6 +155,19 @@ impl Inner {
                 c.send(line);
             }
         }
+        let mut opens = Vec::new();
+        for url in self.client.take_opens() {
+            match address::open(&url) {
+                Ok(address::Open::External(u)) => {
+                    opens.push(json!({"url": u.as_str(), "app": false}))
+                }
+                Ok(address::Open::App(u)) => {
+                    opens.push(json!({"url": address::hyperb(&u), "app": true}))
+                }
+                Err(e) => log::warn!("[{}] not opening {url}: {e}", self.url),
+            }
+        }
+        opens
     }
 }
 
@@ -317,8 +334,9 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_snapshot(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-/// `input(handle: Long, id: String, value: String?, event: String?)`, with
-/// `value` as JSON.
+/// `input(handle: Long, id: String, value: String?, event: String?): String`,
+/// with `value` as JSON. Returns the URLs to open, as a JSON array of
+/// `{"url": String, "app": Boolean}` (`app` for a hyperb address).
 #[no_mangle]
 pub extern "system" fn Java_com_hyperb_app_RustBridge_input(
     mut env: EnvUnowned<'_>,
@@ -327,17 +345,17 @@ pub extern "system" fn Java_com_hyperb_app_RustBridge_input(
     id: JString,
     value: JString,
     event: JString,
-) {
-    env.with_env(|env| -> jni::errors::Result<()> {
+) -> jstring {
+    env.with_env(|env| -> jni::errors::Result<jstring> {
         let id = id.try_to_string(env)?;
         let value = opt_string(env, &value)?.and_then(|v| serde_json::from_str(&v).ok());
         let event = opt_string(env, &event)?;
-        session(handle)
+        let opens = session(handle)
             .inner
             .lock()
             .unwrap()
             .input(&id, value, event.as_deref());
-        Ok(())
+        Ok(env.new_string(json!(opens).to_string())?.into_raw())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
